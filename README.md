@@ -1,4 +1,4 @@
-# Fiddle
+# Fiddle 🎻
 
 > It’s just a two-man con...Like the guy with the fiddle, and the guy
 > who wants to buy the fiddle, and the poor sap in between them who
