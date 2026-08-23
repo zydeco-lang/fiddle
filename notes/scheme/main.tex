@@ -1,0 +1,437 @@
+\documentclass[acmsmall,screen,review,anonymous]{acmart}
+
+\settopmatter{}
+
+\clubpenalty = 10000
+\widowpenalty = 10000
+\displaywidowpenalty = 10000
+
+%% Bibliography style
+\bibliographystyle{ACM-Reference-Format}
+%% Citation style
+%% Note: author/year citations are required for papers published as an
+%% issue of PACMPL.
+\citestyle{acmauthoryear}   %% For author/year citations
+%% \citestyle{acmnumeric}
+\usepackage{mathpartir}
+\usepackage{tikz-cd}
+\usepackage{lipsum}
+\usepackage{enumitem}
+\usepackage{wrapfig}
+\usepackage{fancyvrb}
+\usepackage{xspace}
+\usepackage{thmtools} % needed for sane cleveref naming of theorems
+\usepackage{mathtools}
+\usepackage{hyperref}
+\usepackage[capitalise]{cleveref}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{minted}
+% \PassOptionsToPackage{prologue,dvipsnames}{xcolor}
+
+% \usepackage{showframe}
+
+\usepackage[LGR,T1]{fontenc}
+\DeclareMathAlphabet{\mathgtt}{LGR}{cmtt}{m}{n}
+
+% \renewcommand{\familydefault}{\ttdefault}
+% \usepackage{mathastext}
+% \renewcommand{\familydefault}{\rmdefault}
+
+\colorlet{keywordcolor}{blue}
+\colorlet{nonlintycolor}{RubineRed}
+\colorlet{lintycolor}{PineGreen}
+\colorlet{nonlinconstructorcolor}{nonlintycolor}
+\colorlet{linconstructorcolor}{lintycolor}
+\colorlet{alphabetcolor}{black}
+\colorlet{funarrowcolor}{lintycolor}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\newcommand{\uparrowcode}{\color{nonlinconstructorcolor} \uparrow}
+\newcommand{\tocode}{\color{nonlinconstructorcolor} \to}
+\newcommand{\tocodelin}{\color{linconstructorcolor} \to}
+
+\usepackage{listings}
+\lstdefinelanguage{Agda}{
+alsoletter={0123\&'},
+keywords={data, where, module, import, open, public,
+record, field, let, in, if, then, else, case, of, with,
+do, postulate, primitive, mutual, abstract, private,
+forall, exists, cong, set, prop, sort, Level, Data, Type,
+Renamer},
+morekeywords=[2]{L, Bool, Nat, Fin},
+morekeywords=[3]{String, Dyck, Trace, Exp, Atom, O, D, C, A, NotStartsWithLP, NotStartsWithRP},
+morekeywords=[4]{bal, .nil, .cons, cons, nil, inl, inr, stop, 1to1, 1to2, 0to2, 0to1,
+  done, add, num, parens, left, unexpected, lookAheadRP, lookAheadNot, closeGood, closeBad,
+  doneGood, doneBad},
+morekeywords=[5]{.states, states, .isAcc, isAcc, transitions, src, dst, .transitions, .dst,
+  .src, .label, label, 0 , 1 , 2, 3, true, false},
+morekeywords=[6]{NUM},
+morekeywords=[7]{\&, '},
+sensitive=true,
+comment=[l]{--},
+morecomment=[s]{\{-}{-\}},
+morestring=[b]",
+mathescape=true,
+moredelim={[is][]{\#}{\#}},
+escapeinside={(*@}{@*)},
+escapebegin=\color{funarrowcolor},
+escapeend={}
+}
+\lstset{
+language=Agda,
+basicstyle=\ttfamily\footnotesize,
+keywordstyle=\color{keywordcolor},
+keywordstyle=[2]\color{nonlintycolor},
+keywordstyle=[3]\color{lintycolor},
+keywordstyle=[4]\color{linconstructorcolor},
+keywordstyle=[5]\color{nonlinconstructorcolor},
+keywordstyle=[6]\color{alphabetcolor},
+keywordstyle=[7]\color{funarrowcolor},
+identifierstyle=\color{black},
+commentstyle=\color{gray}\textit,
+stringstyle=\color{orange},
+numbers=none,
+numberstyle=\tiny\color{gray},
+stepnumber=1,
+numbersep=5pt,
+showstringspaces=false,
+tabsize=4,
+captionpos=b,
+breaklines=true,
+breakatwhitespace=false,
+rulecolor=\color{black},
+texcl=true,
+backgroundcolor=\color{backcolour},
+frame=single,
+xleftmargin = 1.5mm ,
+xrightmargin = 1.5mm
+}
+
+\usepackage{placeins} % for \FloatBarrier
+
+\lstnewenvironment{floatlisting}{
+  \FloatBarrier
+  \lstset{
+    aboveskip=2mm
+  }
+}{}
+
+\usepackage{stmaryrd}
+\usepackage{scalerel}
+\usepackage{tikz}
+
+\usepackage{pdfpages}
+
+\newif\ifdraft
+\drafttrue
+\newcommand{\steven}[1]{\ifdraft{\color{orange}[{\bf Steven says}: #1]}\fi}
+\renewcommand{\max}[1]{\ifdraft{\color{blue}[{\bf Max says}: #1]}\fi}
+\newcommand{\johnson}[1]{\ifdraft{\color{red}[{\bf Johnson says}: #1]}\fi}
+\newcommand{\pipe}{\,|\,}
+
+\newcommand{\states}{\mathtt{states}}
+\newcommand{\labelt}{label}
+\newcommand{\transitions}{\texttt{transitions}}
+\newcommand{\epstransitions}{\epsilon\texttt{transitions}}
+\newcommand{\isAcc}{\mathtt{isAcc}}
+\newcommand{\init}{\mathtt{init}}
+\newcommand{\src}{\mathtt{src}}
+\newcommand{\dst}{\mathtt{dst}}
+\newcommand{\pparse}{\mathtt{parse}}
+\newcommand{\print}{\mathtt{print}}
+\newcommand{\epssrc}{\epsilon\mathtt{src}}
+\newcommand{\epsdst}{\epsilon\mathtt{dst}}
+\newcommand{\balanced}{\mathtt{balanced}}
+\newcommand{\Dyck}{\mathtt{Dyck}}
+\newcommand{\N}{\texttt{N}}
+\newcommand{\Cl}{\mathsf{Cl}}
+
+\newcommand{\iso}[2]{#1 \cong #2}
+\newcommand{\id}{\mathsf{id}}
+\newcommand{\isoover}[3]{#1 \cong_{#2} #3}
+\newcommand{\define}[2]{#1 \coloneqq #2}
+\newcommand{\prn}[1]{\left( #1 \right)}
+\newcommand{\cat}[1]{\mathcal{#1}}
+\newcommand{\inob}[2]{#1 : \mathcal{#2}}
+\newcommand{\optext}{\mathsf{op}}
+\newcommand{\opsuperscript}[1]{#1^{\optext}}
+\newcommand{\op}[1]{\opsuperscript{\cat{#1}}}
+\newcommand{\seqstar}[2]{#1 \mathbin{\star} #2}
+\newcommand{\seqcirc}[2]{#2 \mathbin{\circ} #1}
+\newcommand{\seq}[2]{\seqstar{#1}{#2}}
+\newcommand{\cathom}[3]{\cat{#1}\prn{#2,#3}}
+\newcommand{\cathomraw}[3]{{#1}\prn{#2,#3}}
+\newcommand{\incathom}[4]{#1 : \cathom{#2}{#3}{#4}}
+\newcommand{\incathomraw}[4]{#1 : \cathomraw{#2}{#3}{#4}}
+\newcommand{\dispsuperscript}[1]{#1^{\mathbf{D}}}
+\newcommand{\vertsuperscript}[1]{#1^{\mathbf{V}}}
+\newcommand{\mkdisp}[1]{\dispsuperscript{#1}}
+\newcommand{\disp}[1]{\dispsuperscript{\mathcal{#1}}}
+\newcommand{\disppsh}[1]{\dispsuperscript{#1}}
+\newcommand{\vertpsh}[1]{\vertsuperscript{#1}}
+\newcommand{\catofelts}[1]{\mathsf{Elt}\prn{#1}}
+\newcommand{\dispob}[2]{\disp{#1}_{#2}}
+\newcommand{\dispobraw}[2]{{#1}_{#2}}
+\newcommand{\indispob}[3]{#1 : \dispob{#2}{#3}}
+\newcommand{\disphom}[4]{\disp{#1}_{#2}\prn{#3,#4}}
+\newcommand{\disphomraw}[4]{{#1}_{#2}\prn{#3,#4}}
+\newcommand{\indisphom}[5]{#1 : \disphom{#2}{#3}{#4}{#5}}
+\newcommand{\dispopsuperscript}[1]{{\prn{#1}}^{\dispsuperscript{\optext}}}
+\newcommand{\dispop}[1]{\dispopsuperscript{\disp{#1}}}
+\newcommand{\reindex}[2]{\mathrm{reindex}_{#1}\prn{#2}}
+\newcommand{\totalcat}[1]{\textstyle\int #1}
+\newcommand{\vertV}[1]{#1^{\mathsf{V}}}
+
+\newcommand{\Set}{\mathsf{Set}}
+\newcommand{\SetD}{\dispsuperscript{\Set}}
+\newcommand{\Psh}{\mathsf{Psh}}
+\newcommand{\PshD}{\dispsuperscript{\Psh}}
+\newcommand{\hSet}{\mathsf{hSet}}
+\newcommand{\Type}{\mathsf{Type}}
+
+\newcommand{\objtxt}{\mathsf{obj}}
+\newcommand{\elttxt}{\mathsf{elt}}
+\newcommand{\obj}[1]{#1_{\objtxt}}
+\newcommand{\elt}[1]{#1_{\elttxt}}
+\newcommand{\pshelt}[2]{#1~#2}
+\newcommand{\dispobj}[1]{#1_{\mkdisp{\objtxt}}}
+\newcommand{\dispelt}[1]{#1_{\mkdisp{\elttxt}}}
+\newcommand{\disppshelt}[3]{\disppsh{#1}\prn{#2, #3}}
+
+\newcommand{\PiTy}[3]{\textstyle\prod_{#1 : #2} #3}
+\newcommand{\SigTy}[3]{\textstyle\sum_{#1 : #2} #3}
+\newcommand{\PiTyLimit}[3]{\textstyle\prod\limits_{#1 : #2} #3}
+\newcommand{\SigTyLimit}[3]{\textstyle\sum\limits_{#1 : #2} #3}
+
+\newcommand{\Mon}[1]{\mathrm{Mon}[#1]}
+\newcommand{\CCCtxt}{\mathrm{CCC}}
+\newcommand{\CCC}[1]{\CCCtxt[#1]}
+\newcommand{\BiCCC}[1]{\mathrm{BiCCC}[#1]}
+\newcommand{\CCtxt}{\mathrm{CC}}
+\newcommand{\CC}[1]{\CCtxt[#1]}
+\newcommand{\lang}{\mathcal{L}}
+\newcommand{\langsig}[1]{\lang [#1]}
+
+\newcommand{\dom}{\mathsf{dom}}
+\newcommand{\cod}{\mathsf{cod}}
+\newcommand{\rec}{\mathsf{rec}}
+\newcommand{\recinterp}[1]{\rec_{#1}}
+\newcommand{\recinterpCC}[1]{\rec^{\CCtxt}_{#1}}
+\newcommand{\recinterpCCC}[1]{\rec^{\CCCtxt}_{#1}}
+\newcommand{\elim}{\mathsf{elim}}
+\newcommand{\eliminterp}[1]{\elim_{#1}}
+\newcommand{\bool}{\mathsf{Bool}}
+\newcommand{\boolt}{\mathsf{true}}
+\newcommand{\boolf}{\mathsf{false}}
+\newcommand{\List}{\mathsf{List}}
+\newcommand{\nil}{\mathsf{nil}}
+\newcommand{\cons}{\mathsf{cons}}
+\newcommand{\ListOf}[1]{\List~#1}
+\newcommand{\reclist}{\rec_{\List}}
+\newcommand{\elimlist}{\elim_{\List}}
+
+\usepackage{CJKutf8}
+\newcommand{\yochar}{\text{\begin{CJK}{UTF8}{min}よ\end{CJK}}}
+\newcommand{\yo}[1]{\yochar\,#1}
+\newcommand{\nervetxt}{N}
+\newcommand{\nerve}[1]{\nervetxt_{#1}}
+\newcommand{\dispyochar}{\dispsuperscript{\yochar}}
+\newcommand{\dispyo}[1]{\dispyochar\,#1}
+\newcommand{\recyo}[1]{\rec_{\yochar}\prn{#1}}
+\newcommand{\recdispyo}[1]{\rec_{\dispyochar}\prn{#1}}
+\newcommand{\IsoFiber}{\mathrm{IsoFiber}}
+\newcommand{\Iso}{\mathrm{Iso}}
+
+\newcommand{\cartlift}[2]{#1^{*} #2}
+\newcommand{\cartliftbare}[1]{#1^{*}}
+\newcommand{\vertprod}[2]{#1 \times^{\mathbf{V}} #2}
+\newcommand{\dispprod}[2]{#1 \times^{\mathbf{D}} #2}
+\newcommand{\vertexp}[2]{#1 \Rightarrow^{\mathbf{V}} #2}
+\newcommand{\dispexp}[2]{#1 \Rightarrow^{\mathbf{D}} #2}
+\newcommand{\uq}[2]{\forall_{#1}\,#2}
+\newcommand{\lamforall}[1]{\lambda^{\forall}_{#1}}
+\newcommand{\appforall}[1]{\mathsf{app}^{\forall}_{#1}}
+\newcommand{\wk}[1]{\mathsf{wk}_{#1}}
+\newcommand{\app}{\mathsf{app}}
+
+\newcommand{\pext}[1]{\mathrm{ext}\prn{#1}}
+\newcommand{\coy}[1]{\diamond #1}
+
+\newcommand{\slicecat}[2]{#1 / #2}
+
+\newcommand{\nat}{\mathsf{Nat}}
+
+\newcommand{\isTy}[1]{#1\;\mathsf{type}}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\interp}{\leadsto}
+\newcommand{\interpIn}[2]{#1 \leadsto #2}
+\newcommand{\Agda}{\raisebox{-0.2ex}{\includegraphics[height=1.8ex]{logo-agda.pdf}}\xspace}
+
+\newcommand{\extref}[3]{#1~#2 in~\cite{#3}}
+
+% These declarations are to get cleveref to play nice with
+% different theorem-like environments. Otherwise \cref{lem1.1}
+% will display 'Theorem 1.1'
+
+\declaretheoremstyle[headfont=\normalfont\itshape]{defstyle}
+\declaretheoremstyle[headfont=\normalfont\scshape]{thmstyle}
+
+\declaretheorem[name=Definition, style=defstyle, numberwithin=section]{definition}
+\declaretheorem[style=thmstyle, name=Theorem, numberlike=definition]{theorem}
+\declaretheorem[style=thmstyle, name=Axiom, numberlike=definition]{axiom}
+\declaretheorem[style=thmstyle, name=Corollary, numberlike=definition]{corollary}
+\declaretheorem[style=thmstyle, name=Construction, numberlike=definition]{construction}
+
+\crefname{definition}{Definition}{Definitions}
+\crefname{theorem}{Theorem}{Theorems}
+\crefname{axiom}{Axiom}{Axioms}
+\crefname{corollary}{Corollary}{Corollaries}
+\crefname{construction}{Construction}{Constructions}
+
+\begin{document}
+
+\pagebreak
+
+\title{A Call-by-push-value Scheme}
+
+\author{Max S. New}
+\orcid{0000-0001-8141-195X}
+\affiliation{%
+  \institution{University of Michigan}
+  \city{Ann Arbor}
+  \country{USA}
+}
+\email{maxsnew@umich.edu}
+
+\begin{abstract}
+Scheme is known for its minimalism: what would be core language features in other languages are instead implemented as macros over a small kernel. In its most Spartan formulation all compound data arises from the humble cons. Inspired by Levy's Call-by-push-value, we propose a variant of Scheme that applies that same minimalism to multi-argument functions. That is, rather than having both lambda and lambda dot args, we have a single primitive for checking whether there are any more arguments on the stack. In this view, function application is interpreted as a "cons on the stack". We provide a proof-of-concept implementation called Fiddle implemented in Racket, and we discuss other possible applications of this dual viewpoint.
+\end{abstract}
+
+%% 2012 ACM Computing Classification System (CSS) concepts
+%% Generate at 'http://dl.acm.org/ccs/ccs.cfm'.
+
+\maketitle
+
+\section{Making Scheme more Minimal}
+
+Scheme is known for minimalism. A small kernel language includes few
+primitives out of which more complex language features are built up
+using macros \cite{growing-a-language}.
+
+In an extremely minimalistic version of Scheme, the only types of data
+would be atoms, cons cells and closures. Inductive datatypes like
+lists are not primitives, but are emergent from the combination of
+cons cells and a single atom \mintinline{racket}{nil}.
+%
+Rather than being a core primitive, pattern-matching syntax can be
+built up using macros which call out to the basic constructs:
+\mintinline{racket}{nil?} \mintinline{racket}{cons?} \mintinline{racket}{car} and \mintinline{racket}{cdr} as well as
+\mintinline{racket}{if} expressions.
+
+But even minimalistic Schemes typically do include a ``compound''
+construct: closures can take any number of arguments, and these can be
+accessed \emph{as a list}. For example to define a function that
+returns its first argument, no matter how many additional arguments
+are passed:
+\begin{minted}{racket}
+  (define first-arg (x . l) x)
+\end{minted}
+
+This is mirrored in the process of \emph{calling} functions:
+\begin{minted}{racket}
+  (f w x y z)
+  (apply f l)
+\end{minted}
+Function application is a family of many-argument operations with the
+universal way to perform function application being the apply function
+which takes a list as an argument.
+
+This presents a kind of asymmetry: data types in Scheme are built up
+using only simple constructors, but functions, i.e.,
+\emph{codata} types build in the use of a compound inductive structure.
+
+\section{Fiddle: A CBPV Scheme}
+
+We propose a language, \emph{Fiddle}, which brings the same
+minimalistic philosophy of Scheme datatypes to its codatatypes. The
+approach is based on Levy's call-by-push-value calculus (CBPV)
+\cite{cbpv}, and in particular on a semantic model of dynamically
+typed CBPV developed in the study of gradual typing
+\cite{gradual-cbpv}.
+
+The core idea of Fiddle's CBPV approach to functions is to recognize
+that in Scheme and other call-by-value languages, a function call is really a complex construct. In the following call to \mintinline{racket}{f}:
+\begin{minted}{racket}
+  (+ 1 (f x y))
+\end{minted}
+Three distinct operations are performed:
+\begin{enumerate}
+\item A continuation is created from the context \mintinline{racket}{(+ 1 -)}
+\item The arguments \mintinline{racket}{x y} are supplied
+\item Control is transferred to \mintinline{racket}{f}
+\end{enumerate}
+In Fiddle, these are split into three separate notions, which we
+introduce in the opposite order.
+
+First, closures are a primitive datatype just as in Scheme, but the primitive form for creating a closure is not a lambda but the suspension form \mintinline{racket}{(~ e)} which creates a closure that can be invoked using the force form \mintinline{racket}{(! v)}. Forcing a suspended closure runs the suspended code, but the closure itself is a first-class value.
+
+Secondly, arguments are supplied through a single argument form \mintinline{racket}{(e v)} which operationally has the effect of \emph{pushing} the value \mintinline{racket}{v} onto the current stack and then executing the expression \mintinline{racket}{e}. A computation \emph{pops} an argument off of the stack using the lambda form \mintinline{racket}{(lambda (x) e)}. So in Fiddle (and CBPV more generally), the lambda form is not itself a value but instead an imperative operation that pops the value from the stack -- the origin of the term call-by-push-value. A multi-argument call is then syntactic sugar for a sequence of pushes, so \mintinline{racket}{(! f x y)} desugars to \mintinline{racket}{(((! f) x) y)}.
+
+Lastly, continuations in Fiddle are created through an explicit
+sequencing operation resembling a monadic let-binding
+\mintinline{racket}{(bind (x e1) e2)}. Operationally, this creates a
+continuation that captures the current stack, and invokes
+\mintinline{racket}{e1} with a now empty stack of arguments. In the
+current implementation of fiddle, returning is an explicit operation
+\mintinline{racket}{(ret v)} which invokes the current continuation
+with the value \mintinline{racket}{v}.
+
+Combined together the program is written in Fiddle as
+\begin{minted}{racket}
+  (bind (r (! f x y))
+    (! + 1 r))
+\end{minted}
+The separation of the creation of a continuation from the invocation
+of a procedure closely resembles Steele's classic explanation of how to implement procedure calls \cite{steele-goto}.
+
+%% \begin{minted}{racket}
+%%   (f w x y z)
+%% \end{minted}
+%% Into a sequence of one-argument applications, separate from a construct for actually transferring control:
+%% \begin{minted}
+%%   (((((! f) w) x) y) z)
+%% \end{minted}
+%% The one argument application form \mintinline{racket}{(e x)} has the effect of \emph{pushing} the \mintinline{racket}{x} onto the stack, and then executing \mintinline{racket}{e}. The jump form \mintinline{racket}{(! f)} invokes a closure, effectively a tail call where the arguments are passed as the implicit state of the stack.
+
+%% On the callee side, we need two corresponding forms. First \mintinline{racket}{(~ e)} \emph{suspends} the computation \mintinline{racket}{e}
+%% \begin{minted}{racket}
+%%   (~ e)
+%% \end{minted}
+
+\section{Implementation}
+
+We implemented Fiddle as an embedded language in Racket in 2020. We
+used the \emph{turnstile} library \cite{turnstile} for defining typed
+languages, with the very minimal type system of only two syntactic
+sorts: values and computations. We have implemented a small library,
+including a complex copattern matching macro to make defining variable
+arity functions more ergonomic, as well as lazy datastructures and
+abstract datatypes using Fiddle's codata types.
+
+To implement the CBPV-style of stack, the Fiddle runtime has a single
+mutable list which is mutated by pushing and popping. To facilitate
+reuse of Racket's standard libraries we also implement wrapper
+transformations that allow Racket functions to be called from Fiddle
+and vice-versa, transferring values from the Fiddle stack to the
+Racket stack and vice-versa.
+
+We used Fiddle as a prototype for CBPV programming, implementing some
+programming puzzles such as Advent of code, which led to implementing
+lexers, some basic data structures and monad-like abstractions for
+effects. This has since led to the development of Zydeco, a typed CBPV
+language and formalized the monad abstraction used in Fiddle as
+relative monads \cite{zydeco, relative-monads}.
+
+\bibliography{refs.bib}
+
+\end{document}
