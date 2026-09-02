@@ -4,7 +4,7 @@
 (require fiddle/stdlib/IO)
 (require "../../Parse.rkt")
 (require "../../Stream.rkt")
-(require fiddle/stdlib/CoList)
+(require (except-in fiddle/stdlib/CoList take))
 (require fiddle/stdlib/Table)
 (provide main-a main-b)
 

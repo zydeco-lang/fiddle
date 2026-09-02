@@ -2,7 +2,7 @@
 
 (require fiddle/prelude)
 (require fiddle/stdlib/IO)
-(require fiddle/stdlib/CoList)
+(require (except-in fiddle/stdlib/CoList take))
 (require "../../Parse.rkt")
 (require "../../Stream.rkt")
 

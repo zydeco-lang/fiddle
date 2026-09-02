@@ -1,11 +1,11 @@
 #lang fiddle
 
 (require fiddle/prelude)
-(require fiddle/stdlib/CoList)
+(require (except-in fiddle/stdlib/CoList take))
 (require "../../Stream.rkt")
 (require "../../Finger.rkt")
 
-(provide main-a)
+(provide main main-a main-b)
 
 ;; A Circle A is an ADT supporting the following operations
 ;; codata Circle A where
@@ -44,13 +44,11 @@
   [fv <- (! mt-flexvec 'cons x)]
   (! zippy-circle fv 1 0))
 
-;; (define NUM-PLAYERS 10)
-;; (define NUM-MARBLES 1618) ;; answer: 8317
-;; (define NUM-PLAYERS 30)
-;; (define NUM-MARBLES 5807) ;; 37305
+;; (define NUM-PLAYERS 10) (define NUM-MARBLES-A 1618) ;; answer: 8317
+;; (define NUM-PLAYERS 30) (define NUM-MARBLES-A 5807) ;; 37305
 (define NUM-PLAYERS 470)
-;; (define NUM-MARBLES 72170) ;; 388024
-(define NUM-MARBLES 7217000) ;; part b
+(define NUM-MARBLES-A 72170)  ;; answer: 388024
+(define NUM-MARBLES-B 7217000)
 
 (def-thunk (! next-player cur-player)
   (! <<v swap modulo NUM-PLAYERS 'o + 1 cur-player))
@@ -121,13 +119,16 @@
   [v <- (! list->vector l)]
   (ret (~ (! mutable-flexvec v))))
 
-(def-thunk (! main-a)
+(def-thunk (! main num-marbles)
   ;; [circle = (~ (! single-circle 0))]
   [circle = (~ (! simple-circle '() 0 '()))]
   [zeros <- (! <<n list<-colist 'o take NUM-PLAYERS 'o stream-const 0)]
   [init-scores <- (! mutable-flexvec<-list zeros)]
   [final-scores <- (! <<n cl-last 'o
                      operate circle init-scores 0 'o
-                     range 1 NUM-MARBLES)]
+                     range 1 num-marbles)]
   [max-monoid <- (! minimum-monoid >= -inf.0)]
   (! <<n monoid-cl-foldl max-monoid 'o final-scores 'to-colist))
+
+(def-thunk (! main-a) (! main NUM-MARBLES-A))
+(def-thunk (! main-b) (! main NUM-MARBLES-B))
