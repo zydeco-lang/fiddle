@@ -48,7 +48,7 @@
 ;; (define NUM-PLAYERS 30) (define NUM-MARBLES-A 5807) ;; 37305
 (define NUM-PLAYERS 470)
 (define NUM-MARBLES-A 72170)  ;; answer: 388024
-(define NUM-MARBLES-B 7217000)
+(define NUM-MARBLES-B 7217000) ;; ~4.5 min to run
 
 (def-thunk (! next-player cur-player)
   (! <<v swap modulo NUM-PLAYERS 'o + 1 cur-player))

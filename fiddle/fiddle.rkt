@@ -4,6 +4,10 @@
 ;; 
 ;; See initialize.rkt for a description of the runtime state
 (require (rename-in racket/function (thunk thunk-))
+         (only-in racket/unsafe/ops
+                  unsafe-unbox* unsafe-set-box*!
+                  unsafe-car unsafe-cdr
+                  unsafe-cons-list)
          "initialize.rkt"
          (for-syntax syntax/parse))
 (provide (all-defined-out)
@@ -33,6 +37,16 @@
      #'(begin-
          (require (only-in lib [x x-tmp]))
          (define x-wrapped (fo-rkt->fiddle x-tmp))
+         (define-primop x x-wrapped : value)
+         (provide x))]))
+(define-syntax (require-fo-kw-wrapped-provide stx)
+  (syntax-parse stx
+    [(_ lib x)
+     #:with x-tmp (generate-temporary #'x)
+     #:with x-wrapped (generate-temporary #'x)
+     #'(begin-
+         (require (only-in lib [x x-tmp]))
+         (define x-wrapped (fo-kw-rkt->fiddle x-tmp))
          (define-primop x x-wrapped : value)
          (provide x))]))
 
@@ -99,7 +113,7 @@
 (require-fo-wrapped-provide racket/base read-line)
 (require-fo-wrapped-provide racket/base read-char)
 (require-fo-wrapped-provide racket/base read)
-(require-fo-wrapped-provide racket open-output-file)
+(require-fo-kw-wrapped-provide racket open-output-file)
 (require-fo-wrapped-provide racket close-output-port)
 (require-fo-wrapped-provide racket/base displayln)
 (require-fo-wrapped-provide racket/base display)
@@ -180,7 +194,7 @@
   (⊢ e ≫ e- ⇐ value)
   ----------------
   (⊢
-   (let- ([x (unbox- stack)])
+   (let- ([x (unsafe-unbox* stack)])
      (if- (null?- x)
           e-
           (error- (format "expected a return address on the stack but got stack ~a" x))))
@@ -191,10 +205,10 @@
   ((x ≫ x- : value) ⊢ e^ ≫ e^- ⇐ computation)
   -----------------
   (⊢ (let- ()
-       (define tmp (unbox- stack)) ;; Save the current stack
-       (set-box!- stack '())       ;; Hide the stack from e
+       (define tmp (unsafe-unbox* stack)) ;; Save the current stack
+       (unsafe-set-box*! stack '())       ;; Hide the stack from e
        (define x- e-)          ;; run e
-       (set-box!- stack tmp)       ;; restore the stack
+       (unsafe-set-box*! stack tmp)       ;; restore the stack
        e^-)
      ⇒ computation))
 
@@ -238,10 +252,10 @@
   ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
   ----------------------------------------
   (⊢ (let- ()
-           (define- cur (unbox- stack))
+           (define- cur (unsafe-unbox* stack))
            (cond- [(pair?- cur)
-                  (define- x- (car- cur))
-                  (set-box!- stack (cdr- cur))
+                  (define- x- (unsafe-car cur))
+                  (unsafe-set-box*! stack (unsafe-cdr cur))
                   ex-]
                  [else e-]))
      ⇒ computation))
@@ -251,7 +265,7 @@
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------------
   (⊢ (let- ()
-           (define- cur (unbox- stack))
+           (define- cur (unsafe-unbox* stack))
            (cond- [(null?- cur) e-]
                   [else         eelse-]))
      ⇒ computation))
@@ -262,10 +276,10 @@
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------
   (⊢ (let- ()
-           (define- cur (unbox- stack))
+           (define- cur (unsafe-unbox* stack))
            (cond- [(matches-method? cur v-)
                    (define- x- (method-args cur))
-                   (set-box!- stack (method-tl cur))
+                   (unsafe-set-box*! stack (method-tl cur))
                    ex-]
                   [else         eelse-]))
      ⇒ computation)
@@ -323,7 +337,7 @@
   (⊢ e2 ≫ e2- ⇐ value)
   ----------------
   (⊢ (let- ()
-           (set-box!- stack (cons- e2- (unbox- stack)))
+           (unsafe-set-box*! stack (unsafe-cons-list e2- (unsafe-unbox* stack)))
            e1-)
      ⇒ computation))
 
@@ -332,8 +346,8 @@
   (⊢ vcty ≫ vcty- ⇐ value)
   ----------------
   (⊢ (let- ()
-           (define- cur (unbox- stack))
-           (set-box!- stack (invoke-method cur vcty-))
+           (define- cur (unsafe-unbox* stack))
+           (unsafe-set-box*! stack (invoke-method cur vcty-))
            e-)
      ⇒ computation))
 

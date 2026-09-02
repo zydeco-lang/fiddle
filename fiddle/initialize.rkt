@@ -1,8 +1,13 @@
 #lang racket/base
 
+(require (only-in racket/unsafe/ops
+                  unsafe-unbox* unsafe-set-box*!
+                  unsafe-car unsafe-cdr
+                  unsafe-cons-list))
+
 (provide (struct-out foreign) (struct-out ctype) (struct-out method) (struct-out vtype) (struct-out tagged)
          stack regs new-method matches-method? invoke-method new-tag matches-tag? Tag
-         rkt->fiddle fiddle->rkt fo-rkt->fiddle)
+         rkt->fiddle fiddle->rkt fo-rkt->fiddle fo-kw-rkt->fiddle)
 
 ;; This is the *stack*, a Box Methods
 ;; where Methods is one of
@@ -97,22 +102,47 @@
 (define (rkt-stack?! args)
   (unless (list? args)
     (error "Racket FFI error: the fiddle stack uses foreign methods that are incompatible with the racket stack " args)))
-;; rkt->fiddle
-;; wraps first-order functions from racket to fiddle
+;; wraps first-order, positional-only Racket procedures. Skips the regs
+;; hash-count check and keyword-apply fallback that fo-kw-rkt->fiddle
+;; needs — those cost about half of runtime on primop-heavy hot paths.
+;; Also skips rkt-stack?! — apply/car will error on their own if a
+;; caller has pushed a foreign method struct, just with a less
+;; Fiddle-flavored message. Specializes on stack length 0..3 to avoid
+;; the apply-time arity check on the hot arithmetic path (Racket's +,
+;; -, *, <, etc. are variadic, so apply always has to length-walk).
 (define (fo-rkt->fiddle x)
   (cond
     [(procedure? x)
      (λ ()
-       (define args (unbox stack))
+       (let ([s (unsafe-unbox* stack)])
+         (unsafe-set-box*! stack '())
+         (cond
+           [(null? s) (x)]
+           [(null? (unsafe-cdr s))
+            (x (unsafe-car s))]
+           [(null? (unsafe-cdr (unsafe-cdr s)))
+            (x (unsafe-car s) (unsafe-car (unsafe-cdr s)))]
+           [(null? (unsafe-cdr (unsafe-cdr (unsafe-cdr s))))
+            (x (unsafe-car s) (unsafe-car (unsafe-cdr s)) (unsafe-car (unsafe-cdr (unsafe-cdr s))))]
+           [else (apply x s)])))]
+    [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
+
+;; wraps first-order Racket procedures that may accept keyword args.
+;; Drains regs into a keyword-apply on every call.
+(define (fo-kw-rkt->fiddle x)
+  (cond
+    [(procedure? x)
+     (λ ()
+       (define args (unsafe-unbox* stack))
        (rkt-stack?! args)
-       (set-box! stack '())
+       (unsafe-set-box*! stack '())
        (cond [(zero? (hash-count regs))
               (apply x args)]
              [else
               (define-values (ks vs) (regs->kvs))
               (hash-clear! regs)
               (keyword-apply x ks vs args)]))];; if the stack isn't a list, this will "go wrong"
-    [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
+    [else (error 'fo-kw-rkt->fiddle-is-for-fo-funs)]))
 
 ;; racket value -> fiddle value
 (define (rkt->fiddle x)
@@ -121,9 +151,9 @@
     [(pair? x) (cons (rkt->fiddle (car x)) (rkt->fiddle (cdr x)))]
     [(procedure? x)
      (λ ()
-       (define args (unbox stack))
+       (define args (unsafe-unbox* stack))
        (rkt-stack?! args)
-       (set-box! stack '())
+       (unsafe-set-box*! stack '())
        (cond [(zero? (hash-count regs))
               (rkt->fiddle (apply x (map fiddle->rkt args)))]
              [else
@@ -142,8 +172,8 @@
                      (fiddle->rkt (cdr x)))]
     [(foreign? x) (foreign-payload x)]
     [(procedure? x)
-     (λ args       
-       (set-box! stack (map rkt->fiddle args))
+     (λ args
+       (unsafe-set-box*! stack (map rkt->fiddle args))
        (fiddle->rkt (x)))]))
 
 (module+ test
