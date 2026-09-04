@@ -3,21 +3,52 @@
 ;; A CBPV Scheme-like
 ;; 
 ;; See initialize.rkt for a description of the runtime state
-(require (rename-in racket/function (thunk thunk-))
-         (only-in racket/unsafe/ops
-                  unsafe-unbox* unsafe-set-box*!
-                  unsafe-car unsafe-cdr
-                  unsafe-cons-list)
+(require racket/stxparam
          "initialize.rkt"
          (for-syntax syntax/parse))
 (provide (all-defined-out)
          (rename-out (many-app #%app))
          matches-method? matches-tag?
          invoke-method)
-(define (force- th) (th))
 
 (define-base-type value)
 (define-base-type computation)
+
+;; Calling convention.
+;;
+;; A Fiddle computation compiles to an ordinary Racket expression in
+;; which `current-stack` is a lexically-bound variable holding the
+;; current stack (an ordinary list). Evaluating the expression runs
+;; the computation against that stack; the result is the value the
+;; eventual `ret` produces. Only `thunk` suspends a computation, by
+;; abstracting over the stack with a lambda — matching CBPV, where
+;; thunk is the one place computations are packaged as values and
+;; force (`basic-!`) is application.
+;;
+;; `current-stack` is a syntax parameter rather than a plain
+;; identifier because each typed-syntax rule's template introduces
+;; its own binder under its own macro scope; the parameter is the one
+;; shared name every rule refers to, and `with-stack` / `thunk-λ`
+;; re-point it at whatever binder they just introduced.
+;;
+;; Register-file writes/reads (^:, kw-case-λ) still go through the
+;; global mutable `regs` hash defined in initialize.rkt.
+(define-syntax-parameter current-stack
+  (λ (stx)
+    (raise-syntax-error 'current-stack "used outside with-stack / thunk-λ" stx)))
+
+;; Run body with `current-stack` rebound to new-stack.
+(define-syntax-rule (with-stack new-stack body ...)
+  (let- ([stk new-stack])
+    (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
+      body ...)))
+
+;; Suspend body as a 1-arg procedure over the stack. This is the only
+;; place a computation becomes a closure.
+(define-syntax-rule (thunk-λ body ...)
+  (lambda (stk)
+    (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
+      body ...)))
 
 (define-syntax (require-wrapped-provide stx)
   (syntax-parse stx
@@ -194,22 +225,17 @@
   (⊢ e ≫ e- ⇐ value)
   ----------------
   (⊢
-   (let- ([x (unsafe-unbox* stack)])
-     (if- (null?- x)
-          e-
-          (error- (format "expected a return address on the stack but got stack ~a" x))))
+   (if- (null?- current-stack)
+        e-
+        (error- (format "expected a return address on the stack but got stack ~a" current-stack)))
    ⇒ computation))
 
 (define-typed-syntax (bind (x:id e) e^) ≫
   (⊢ e ≫ e- ⇐ computation)
   ((x ≫ x- : value) ⊢ e^ ≫ e^- ⇐ computation)
   -----------------
-  (⊢ (let- ()
-       (define tmp (unsafe-unbox* stack)) ;; Save the current stack
-       (unsafe-set-box*! stack '())       ;; Hide the stack from e
-       (define x- e-)          ;; run e
-       (unsafe-set-box*! stack tmp)       ;; restore the stack
-       e^-)
+  (⊢ (let- ([x- (with-stack '() e-)])  ;; run e against an empty stack
+       e^-)                              ;; run e^ against the ambient stack
      ⇒ computation))
 
 (define-typed-syntax (let ([x e] ...) e^) ≫
@@ -236,12 +262,14 @@
 (define-typed-syntax (thunk e) ≫
   (⊢ e ≫ e- ⇐ computation)
   ----------------
-  (⊢ (thunk- e-) ⇒ value))
+  ;; The one place a computation becomes a closure.
+  (⊢ (thunk-λ e-) ⇒ value))
 
 (define-typed-syntax (basic-! e) ≫
   (⊢ e ≫ e- ⇐ value)
   ----------------
-  (⊢ (force- e-) ⇒ computation))
+  ;; force = apply the thunk to the current stack
+  (⊢ (e- current-stack) ⇒ computation))
 
 (define-typed-syntax (! e es ...) ≫
   ------------------------
@@ -251,23 +279,18 @@
   (⊢ e ≫ e- ⇐ computation)
   ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
   ----------------------------------------
-  (⊢ (let- ()
-           (define- cur (unsafe-unbox* stack))
-           (cond- [(pair?- cur)
-                  (define- x- (unsafe-car cur))
-                  (unsafe-set-box*! stack (unsafe-cdr cur))
-                  ex-]
-                 [else e-]))
+  (⊢ (cond- [(pair?- current-stack)
+             (let- ([x- (car- current-stack)])
+               (with-stack (cdr- current-stack) ex-))]
+            [else e-])
      ⇒ computation))
 
 (define-typed-syntax (copat-bind [(#:bind) e] [() eelse]) ≫
   (⊢ e ≫ e- ⇐ computation)
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------------
-  (⊢ (let- ()
-           (define- cur (unsafe-unbox* stack))
-           (cond- [(null?- cur) e-]
-                  [else         eelse-]))
+  (⊢ (cond- [(null?- current-stack) e-]
+            [else                   eelse-])
      ⇒ computation))
 
 (define-typed-syntax (copat-method [((~literal %) (v x:id)) ex] [() eelse]) ≫
@@ -275,13 +298,10 @@
   ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------
-  (⊢ (let- ()
-           (define- cur (unsafe-unbox* stack))
-           (cond- [(matches-method? cur v-)
-                   (define- x- (method-args cur))
-                   (unsafe-set-box*! stack (method-tl cur))
-                   ex-]
-                  [else         eelse-]))
+  (⊢ (cond- [(matches-method? current-stack v-)
+             (let- ([x- (method-args current-stack)])
+               (with-stack (method-tl current-stack) ex-))]
+            [else eelse-])
      ⇒ computation)
   )
 
@@ -291,11 +311,10 @@
   ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------
-  (⊢ (let- ()
-           (cond- [(matches-tag? v- vt-)
-                   (define- x- (tagged-args v-))
-                   ex-]
-                  [else eelse-]))
+  (⊢ (cond- [(matches-tag? v- vt-)
+             (let- ([x- (tagged-args v-)])
+               ex-)]
+            [else eelse-])
      ⇒ computation)
   )
 
@@ -336,19 +355,14 @@
   (⊢ e1 ≫ e1- ⇐ computation)
   (⊢ e2 ≫ e2- ⇐ value)
   ----------------
-  (⊢ (let- ()
-           (unsafe-set-box*! stack (unsafe-cons-list e2- (unsafe-unbox* stack)))
-           e1-)
+  (⊢ (with-stack (cons- e2- current-stack) e1-)
      ⇒ computation))
 
 (define-typed-syntax (^% e vcty) ≫
   (⊢ e ≫ e- ⇐ computation)
   (⊢ vcty ≫ vcty- ⇐ value)
   ----------------
-  (⊢ (let- ()
-           (define- cur (unsafe-unbox* stack))
-           (unsafe-set-box*! stack (invoke-method cur vcty-))
-           e-)
+  (⊢ (with-stack (invoke-method current-stack vcty-) e-)
      ⇒ computation))
 
 ;; what should be the semantics here?
@@ -360,10 +374,10 @@
   (⊢ e2 ≫ e2- ⇐ value)
   ----------------
   (⊢ (let- ()
-           (unless- (keyword?- k-)
-                    (error- (format "expected a keyword to assign, but got ~a" k-)))
-           (hash-set!- regs k- e2-)
-           e1-)
+       (unless- (keyword?- k-)
+                (error- (format "expected a keyword to assign, but got ~a" k-)))
+       (hash-set!- regs k- e2-)
+       e1-)
      ⇒ computation))
 
 (define-typed-syntax kw-case-λ
@@ -378,9 +392,9 @@
    (⊢
     (cond-
      [(hash-has-key?- regs k-)         ;; if the register is set
-      (define- x- (hash-ref- regs k-)) ;; bind its value to x
-      (hash-remove!- regs k-)          ;; and unset it
-      esucc-]
+      (let- ([x- (hash-ref- regs k-)]) ;; bind its value to x
+        (hash-remove!- regs k-)        ;; and unset it
+        esucc-)]
      [(keyword?- k-) eelse-]
      [else
       (error- (format "expected a keyword to match on, but got ~a" k-))])
@@ -412,7 +426,7 @@
 (define-typed-syntax (main e) ≫
   (⊢ e ≫ e- ⇐ computation)
   ----------------
-  (⊢ (let- ([x- e-]) (void)) ⇒ computation))
+  (⊢ (let- ([x- (with-stack '() e-)]) (void)) ⇒ computation))
 
 (define-typed-syntax (define! x e) ≫
   (⊢ e ≫ e- ⇐ computation)
@@ -420,7 +434,7 @@
   --------------------------------------
   (≻
    (begin-
-     (define x-tmp e-)
+     (define x-tmp (with-stack '() e-))    ;; run the computation once against an empty stack
      (define-syntax x (make-variable-like-transformer (assign-type
                                                        #'x-tmp #'value
                                                        #:wrap? #f))))))
@@ -456,7 +470,7 @@
   (check-type #f : value)
   (check-type (bind (x (ret #t)) (ret x)) : computation)
   (typecheck-fail (if #t #t #f))
-  (check-equal? (bind (x (ret #t)) (ret x)) #t)
+  (check-equal? ((thunk (bind (x (ret #t)) (ret x))) '()) #t)
   (check-type (! 3) : computation)
   (check-type (many-app (! 3) 4) : computation)
   (check-type (many-app (! 3) 4 5 6) : computation)
