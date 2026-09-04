@@ -46,9 +46,7 @@ The language is implemented as a "#lang" in Racket, using the
 
 # Performance
 
-Performance is pretty bad. Macro-expansion can take a while, but worse
-is the runtime performance, though I haven't looked into exactly why
-the Racket's optimizer doesn't do better on it.
+I've done some optimization but there is still a high amount of overhead from copattern matching and combinators that use copattern matching. This is hopefully mostly just interpretive overhead of the copattern matcher, and a smarter implementation should be a big improvement.
 
 [turnstile]: https://docs.racket-lang.org/turnstile/index.html
 [GTT]: https://arxiv.org/abs/1811.02440
