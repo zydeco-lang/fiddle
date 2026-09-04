@@ -171,13 +171,8 @@
 ; (! sum 1 1)
 ; (! sum 5 6 7 8) ; 26
 
-(define-rec-thunk (! rev-loop acc lst)
-  (ifc (! null? lst)
-       (ret acc)
-       (do [hd <- (! car lst)]
-           [tl <- (! cdr lst)]
-         (! rev-loop (cons hd acc) tl))))
-(define-thunk (! reverse lst) (! rev-loop '() lst))
+;; reverse is imported directly from racket/base via fiddle.rkt (much
+;; faster than a user-space rev-loop).
 ; (! reverse (cons 3 (cons 4 (cons 5 null))))
 
 ;; stack-loop : forall X. (X -> ?c) -> X -> (U (?v -> X -> F X)) -> ?c
@@ -275,66 +270,11 @@
 (define-thunk (! any-stack-copat?) (! equal? 'any-stack))
 (define-thunk (! rest-copat?)      (! equal? 'rest))
 
-(define-thunk (! tagged-copat? tag copat)
-  (! and (~ (! cons? copat))
-     (~ (do [tg <- (! car copat)]
-            (! equal? tg tag)))))
-(define-thunk (! keyword-copat?) (! tagged-copat? 'keyword))
-(define-thunk (! arg-copat?)     (! tagged-copat? 'arg))
-(define-thunk (! upto-copat?)    (! tagged-copat? 'upto))
-(define-thunk (! method-copat?)  (! tagged-copat? 'method))
-
-;;
-;; A pat is one of
-;;   'var -- binds the scrutinee to a variable
-;;   (list 'lit v) -- matches if the scrutinee is equal? v
-;;   (list 'cons p1 p2) -- matches a cons, then matches p1 on the car and p2 the cdr
+;; arg-copat?, upto-copat?, kw-copat?, method-copat?,
+;; lit-pat?, cons-pat?, list-pat?, method-pat?, method-only?,
+;; upto-syn?, kw-syn?, method-syn? are struct predicates provided by
+;; fiddle.rkt (see copat-structs.rkt). Field accessors likewise.
 (define-thunk (! var-pat? pat) (! equal? pat 'var))
-(define-thunk (! lit-pat? pat)
-  (! and
-     (thunk (! cons? pat))
-     (thunk
-      (do [tag <- (! car pat)]
-          (! equal? 'lit tag)))))
-(define-thunk (! cons-pat? pat)
-  (! and (~ (! cons? pat))
-     (~ (do [tg <- (! car pat)] (! equal? tg 'cons)))))
-(define-thunk (! list-pat? pat)
-  (! and (~ (! cons? pat))
-     (~ (do [tg <- (! car pat)] (! equal? tg 'list)))))
-
-;;
-;; A copat-syn is either
-;;   a list of patterns (pat-syn ...)
-
-;; A pat-syn is one of
-;;   'end -> 'end
-;;   'rest -> 'rest
-;;   (list 'upto ?v) -> (list 'upto ?v cdr)
-;;   'var            -> pattern 'var matches anything, binds to a variable
-;;   (list 'lit ?v)  -> pattern (list 'lit ?v)
-;;   (list 'cons p p) -> pattern (cons p p)
-;;
-;; #:bind is a kind of pattern that matches the empty stack.
-
-(define-thunk (! tagged-syn? tag pat)
-  (! and
-     (thunk (! cons? pat))
-     (thunk
-      (do [tag^ <- (! car pat)]
-          (! equal? tag tag^)))))
-(define-thunk (! upto-syn?) (! tagged-syn? 'upto))
-(define-thunk (! kw-syn?) (! tagged-syn? 'keyword))
-(define-thunk (! method-syn?) (! tagged-syn? 'method))
-(define-thunk (! lit?) (! tagged-syn? 'lit))
-(define-thunk (! method-only? s)
-  (! and (~ (! tagged-syn? 'method s))
-     (~ (do [l <- (! length s)]
-            (! = l 2)))))
-(define-thunk (! method-pattern? s)
-  (! and (~ (! tagged-syn? 'method s))
-     (~ (do [l <- (! length s)]
-            (! = l 3)))))
 
 ;; Parses one level of macro syntax for a copattern into a copattern
 (define-rec-thunk (! view-copat syn)
@@ -346,18 +286,22 @@
          [(! or (~ (! end-copat? hd)) (~ (! equal? 'rest hd)))
           (ret hd)]
          [(! upto-syn? hd)
-          (do [sigil <- (! second hd)]
-              (! List 'upto sigil tl))]
+          [sigil <- (! upto-syn-sigil hd)]
+          (! upto-copat sigil tl)]
+         [(! upto-multi-syn? hd)
+          [sigils <- (! upto-multi-syn-sigils hd)]
+          [end?   <- (! upto-multi-syn-end? hd)]
+          (! upto-multi-copat sigils end? tl)]
          [(! kw-syn? hd)
-          (do [kw  <- (! second hd)]
-              [pat <- (! third hd)]
-            (! List 'keyword kw pat tl))]
+          [kw  <- (! kw-syn-kw hd)]
+          [pat <- (! kw-syn-pat hd)]
+          (! kw-copat kw pat tl)]
          [(! method-syn? hd)
-          (do [method <- (! second hd)]
-              [pat    <- (! third hd)]
-            (! List 'method method pat tl))]
-         ;; this is very bad(!!!!!!!!!!! TODO: fixme this is exploitable I think to get weird errors
-         [#:else (! List 'arg hd tl)]))]))
+          [m   <- (! method-syn-m hd)]
+          [pat <- (! method-syn-pat hd)]
+          (! method-copat m pat tl)]
+         ;; anything else is an arg-copat with `hd` as the arg pattern.
+         [#:else (! arg-copat hd tl)]))]))
 
 ;; captures up to lit. match-k should take an abort-k argument and a list
 (define-rec-thunk (! up-to-lit match-k abort-k lit seen)
@@ -382,18 +326,40 @@
      [() ;; something else (other method, bind) so fail
       (! rev-apply abort-k seen)])]))
 
+;; Multi-sigil upto: capture stack args in a single scan, stopping at
+;; the first element in `sigils` (or at end-of-stack when `end?` is #t).
+;; Invokes match-k with args-before-sigil and the found sigil (or the
+;; keyword #:bind for end-of-stack). Uses Racket's `member` for the
+;; per-element sigil check so the inner loop stays out of Fiddle's
+;; recursive-thunk layer.
+(define-rec-thunk (! up-to-multi match-k abort-k sigils end? seen)
+  (copat-arg
+   [(x)
+    (do [in? <- (! member x sigils)]
+        (if in?
+            (do [seen~ <- (! reverse seen)]
+                [abort-k <- (ret (thunk (! rev-apply abort-k (cons x seen))))]
+                (! match-k abort-k seen~ x))
+            (! up-to-multi match-k abort-k sigils end? (cons x seen))))]
+   [()
+    (if end?
+        (do [seen~ <- (! reverse seen)]
+            [abort-k <- (ret (thunk (! rev-apply abort-k seen)))]
+            (! match-k abort-k seen~ '#:bind))
+        (! rev-apply abort-k seen))]))
+
 (define-rec-thunk (! simplify-list-pat pats)
   (ifc (! null? pats)
-       (ret (list 'lit '()))
+       (! lit-pat '())
        (do [hd <- (! car pats)]
            [tl <- (! cdr pats)]
          [tl-pat <- (! simplify-list-pat tl)]
-         (ret (list 'cons hd tl-pat)))))
+         (! cons-pat hd tl-pat))))
 
 (define-rec-thunk (! simplify-pat raw)
   (ifc (! list-pat? raw)
-       (do [tl <- (! cdr raw)]
-           (! simplify-list-pat tl))
+       (do [ps <- (! list-pat-ps raw)]
+           (! simplify-list-pat ps))
        (ret raw)))
 ;; Attempt to match the stack against a copattern.
 ;;   exec match-k on success with args as determined by the copat
@@ -409,23 +375,24 @@
       (cond [(! any-stack-copat? copat) (! match-k)]
             [(! rest-copat? copat) (! dot-args match-k)]
             [(! upto-copat? copat)
-             [sigil <- (! second copat)] [tl-copat <- (! third copat)]
-             (cond [(! lit? sigil)
-                    [lit <- (! second sigil)]
+             [sigil <- (! upto-copat-sigil copat)]
+             [tl-copat <- (! upto-copat-rest copat)]
+             (cond [(! lit-pat? sigil)
+                    [lit <- (! lit-pat-v sigil)]
                     (! up-to-lit
                        (thunk
                         (λ (abort-k xs)
                           (! copat-match (~ (! match-k xs)) abort-k tl-copat)))
                        abort-k lit '())]
                    [(! method-only? sigil)
-                    [m <- (! second sigil)]
+                    [m <- (! method-only-m sigil)]
                     (! up-to-method
                        (~ (λ (abort-k xs m-args)
                             (! apply (~ (! copat-match (~ (! match-k xs)) abort-k tl-copat % m)) m-args)))
                        abort-k m '())]
-                   [(! method-pattern? sigil)
-                    [m <- (! second sigil)]
-                    [pat <- (! third sigil)]
+                   [(! method-pat? sigil)
+                    [m   <- (! method-pat-m sigil)]
+                    [pat <- (! method-pat-pat sigil)]
                     (! up-to-method
                        (~ (λ (abort-k xs m-args)
                             (! copat-match (~ (! match-k xs))
@@ -434,33 +401,42 @@
                                            m-args)))
                        abort-k m '())])
              ]
-            [(! keyword-copat? copat)
-             [kw <- (! second copat)]
-             [pat <- (! third copat)]
-             [copat <- (! fourth copat)]
+            [(! upto-multi-copat? copat)
+             [sigils   <- (! upto-multi-copat-sigils copat)]
+             [end?     <- (! upto-multi-copat-end? copat)]
+             [tl-copat <- (! upto-multi-copat-rest copat)]
+             (! up-to-multi
+                (~ (λ (abort-k xs sigil)
+                     (! copat-match (~ (! match-k xs sigil)) abort-k tl-copat)))
+                abort-k sigils end? '())]
+            [(! kw-copat? copat)
+             [kw    <- (! kw-copat-kw copat)]
+             [pat   <- (! kw-copat-pat copat)]
+             [copat <- (! kw-copat-rest copat)]
              (kw-case-λ
               [(kw x)
                ; we need to restore the register if we abort
-               (! copat-match match-k (~ (λ (x) (^: (! abort-k) kw x)))   
+               (! copat-match match-k (~ (λ (x) (^: (! abort-k) kw x)))
                   (cons pat copat)
                   x)]
               [() (! abort-k)])]
             [(! arg-copat? copat)
-             [raw-pat <- (! second copat)]
-             [pat <- (! simplify-pat raw-pat)]
-             [copat <- (! third copat)]
+             [raw-pat <- (! arg-copat-pat copat)]
+             [pat     <- (! simplify-pat raw-pat)]
+             [copat   <- (! arg-copat-rest copat)]
              (copat-arg
               [(x)
                (cond
                  [(! var-pat? pat)
                   (! copat-match (~ (! match-k x)) (~ (! abort-k x)) copat)]
                  [(! lit-pat? pat)
-                  [lit <- (! second pat)]
+                  [lit <- (! lit-pat-v pat)]
                   (cond [(! equal? lit x)
                          (! copat-match match-k (~ (! abort-k x)) copat)]
                         [#:else (! abort-k x)])]
                  [(! cons-pat? pat)
-                  [car-pat <- (! second pat)] [cdr-pat <- (! third pat)]
+                  [car-pat <- (! cons-pat-car pat)]
+                  [cdr-pat <- (! cons-pat-cdr pat)]
                   (cond [(! cons? x)
                          [x-car <- (! car x)] [x-cdr <- (! cdr x)]
                          (! copat-match match-k (~ (λ (x y) (! abort-k (cons x y))))
@@ -470,9 +446,9 @@
                  )]
               [() (! abort-k)])]
             [(! method-copat? copat)
-             [method <- (! second copat)]
-             [pat <- (! third copat)]
-             [copat <- (! fourth copat)]
+             [method <- (! method-copat-m copat)]
+             [pat    <- (! method-copat-pat copat)]
+             [copat  <- (! method-copat-rest copat)]
              (copat-method
               [(% (method xs))
                (! copat-match match-k (~ (λ (xs) (! apply (~ (! abort-k % method)) xs)))
@@ -576,13 +552,17 @@
   (ret 'stdlib-tests-all-pass))
 
 (begin-for-syntax
+  ;; Each pattern (`.pattern` attribute) is now a Fiddle *computation*
+  ;; returning a pat / copat-syn value. The `copat` class threads them
+  ;; together via `do` so the enclosing list can hold plain values.
   (define-syntax-class meth-args-pat
     #:attributes (pattern all-vars)
     (pattern x:id
-     #:attr pattern #''var
+     #:attr pattern #`(ret 'var)
      #:attr all-vars #'(x))
     (pattern (p:pat ...)
-     #:attr pattern #`(list 'list p.pattern ...)
+     #:with (v ...) (generate-temporaries #'(p ...))
+     #:attr pattern #`(do [v <- p.pattern] ... (! list-pat (list v ...)))
      #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
     )
 
@@ -590,94 +570,120 @@
     #:attributes (pattern all-vars)
     (pattern
      x:id
-     #:attr pattern #''var
+     #:attr pattern #`(ret 'var)
      #:attr all-vars #'(x))
 
     (pattern
      ((~literal =) e:expr)
-     #:attr pattern #`(list 'lit e)
+     #:attr pattern #`(! lit-pat e)
      #:attr all-vars #'())
 
     (pattern
      ((~literal upto) xs:id ((~literal %) v))
-     #:attr pattern #`(list 'upto (list 'method v))
+     #:attr pattern #`(do [s <- (! method-only v)] (! upto-syn s))
      #:attr all-vars #'(xs))
     (pattern
      ((~literal upto) xs:id ((~literal %) v m:meth-args-pat))
-     #:attr pattern #`(list 'upto (list 'method v m.pattern))
+     #:attr pattern #`(do [mp <- m.pattern]
+                          [s  <- (! method-pat v mp)]
+                          (! upto-syn s))
      #:attr all-vars #`#,(cons #`xs
                                (syntax-e #`m.all-vars)))
 
+    ;; multi-sigil upto:
+    ;;   (upto xs #:sigil s lit ... [#:bind])
+    ;; xs binds to args before the terminator; s binds to the found
+    ;; sigil value (or the keyword #:bind for end-of-stack, if allowed).
+    (pattern
+     ((~literal upto) xs:id
+                      (~datum #:sigil) s:id
+                      lit:expr ...
+                      (~optional (~and end-marker (~datum #:bind))))
+     #:with end-flag (if (attribute end-marker) #'#t #'#f)
+     #:attr pattern #`(! upto-multi-syn (list lit ...) end-flag)
+     #:attr all-vars #'(xs s))
+
     (pattern
      ((~literal upto) xs:id e:expr)
-     #:attr pattern #`(list 'upto (list 'lit e))
+     #:attr pattern #`(do [s <- (! lit-pat e)] (! upto-syn s))
      #:attr all-vars #'(xs))
 
     (pattern
      (k:keyword p:pat)
-     #:attr pattern #`(list 'keyword (quote k) p.pattern)
+     #:attr pattern #`(do [pp <- p.pattern] (! kw-syn (quote k) pp))
      #:attr all-vars #`#,(syntax-e #`p.all-vars))
     (pattern
      ((~literal rest) xs:id)
-     #:attr pattern #`'rest
+     #:attr pattern #`(ret 'rest)
      #:attr all-vars #'(xs))
     (pattern
      ((~literal cons) car:pat cdr:pat)
-     #:attr pattern #`(list 'cons car.pattern cdr.pattern)
+     #:attr pattern #`(do [cp  <- car.pattern]
+                          [cdp <- cdr.pattern]
+                          (! cons-pat cp cdp))
      #:attr all-vars #`#,(append (syntax-e #`car.all-vars)
                                  (syntax-e #`cdr.all-vars)))
     (pattern
      ((~literal list) p:pat ...)
-     #:attr pattern #`(list 'list p.pattern ...)
+     #:with (v ...) (generate-temporaries #'(p ...))
+     #:attr pattern #`(do [v <- p.pattern] ...
+                          (! list-pat (list v ...)))
      #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
 
     (pattern
      ((~literal quote) e)
-     #:attr pattern #`(list 'lit (quote e))
+     #:attr pattern #`(! lit-pat (quote e))
      #:attr all-vars #'())
 
     (pattern
      ((~literal @) e:expr x:id)
-     #:attr pattern #`(list 'tagged e 'var)
+     #:attr pattern #`(ret (list 'tagged e 'var))
      #:attr all-vars #'(x))
 
     ;; tagged destructure
-    
+
     (pattern
      ((~literal %) e:expr x:id)
-     #:attr pattern #`(list 'method e 'var)
+     #:attr pattern #`(! method-syn e 'var)
      #:attr all-vars #'(x))
     (pattern
      ((~literal %) e:expr (p:pat ...))
-     #:attr pattern #`(list 'method e (list 'list p.pattern ...))
+     #:with (v ...) (generate-temporaries #'(p ...))
+     #:attr pattern #`(do [v <- p.pattern] ...
+                          [pp <- (! list-pat (list v ...))]
+                          (! method-syn e pp))
      #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...))))     )
-    
+
     (pattern
      (~or e:boolean e:char e:number e:string)
-     #:attr pattern #`(list 'lit e)
+     #:attr pattern #`(! lit-pat e)
      #:attr all-vars #'())
-    
+
 )
   (define-syntax-class copat
     #:attributes (patterns vars)
     (pattern
      (p:pat ...)
-     #:attr patterns #`(list p.pattern ...)
-     ;; #:when (displayln (syntax-e #`(p.all-vars ...)))
+     #:with (v ...) (generate-temporaries #'(p ...))
+     #:attr patterns #`(do [v <- p.pattern] ...
+                           (ret (list v ...)))
      #:attr vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
     (pattern
      (p:pat ... #:bind)
-     #:attr patterns #`(list p.pattern ... end-copat)
-     ;; #:when (displayln (syntax-e #`(p.all-vars ...)))
+     #:with (v ...) (generate-temporaries #'(p ...))
+     #:attr patterns #`(do [v <- p.pattern] ...
+                           (ret (list v ... end-copat)))
      #:attr vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))))
 
 (define-syntax (copat syn)
   (syntax-parse syn
     [(_ [cop:copat e ...] ...)
-     ;; #:do ((displayln #'(cop.vars ...)))
-     ;; #`(list (list cop.patterns (thunk (λ cop.vars e))) ...)
-     #`(! try-copatterns-default-error (list (list cop.patterns (thunk (λ cop.vars (do e ...)))) ...))
-     ]))
+     #:with (ps ...) (generate-temporaries #'(cop ...))
+     ;; cop.patterns is a computation returning the pattern list; bind
+     ;; each via `do` before assembling the outer list of (pat, kont) pairs.
+     #`(do [ps <- cop.patterns] ...
+           (! try-copatterns-default-error
+              (list (list ps (thunk (λ cop.vars (do e ...)))) ...)))]))
 (define-syntax (pat syn)
   (syntax-parse syn
     [(_ v [p:pat k ...] ...)
@@ -726,36 +732,32 @@
 
 (define-thunk (! Thunk x) (ret (~ (ret x))))
 
-;; PERFORMANCE ISSUE?
-;; Traverses the entire list looking for 'o before looking for '$
-;; should probably find '$ first, or optimize or add multiple upto
+;; Single-pass upto scan: match either 'o (compose) or '$ / end-of-stack
+;; (done). `s` binds to the found sigil (or the keyword #:bind for end).
 (define-rec-thunk (! <<v-impl k)
   (copat
-   [(f (upto xs 'o))
-    (let ([k (thunk (λ (y)
-                      (do [z <- (! apply f xs y)]
-                          (! k z))))])
-      (! <<v-impl k))]
-   [(f (upto xs '$))
-    (do [z <- (! apply f xs)]
-        (! k z))]
-   [(f)
-    (! dot-args
-       (~ (λ (args)
-            (do [z <- (! apply f args)]
-                (! k z)))))]))
+   [(f (upto xs #:sigil s 'o '$ #:bind))
+    (cond
+      [(! equal? s 'o)
+       (let ([k (thunk (λ (y)
+                         (do [z <- (! apply f xs y)]
+                             (! k z))))])
+         (! <<v-impl k))]
+      [#:else
+       (do [z <- (! apply f xs)]
+           (! k z))])]))
 
 (define-thunk (! <<v) (! <<v-impl Ret))
 
 (define-rec-thunk (! <<n-impl)
   (copat
-   [(k f (upto xs 'o))
-    (let ([k (thunk (copat [(y) (! k (thunk (! apply f xs y)))]))])
-      (! <<n-impl k))]
-   [(k f (upto xs '$))
-    (! k (thunk (! apply f xs)))]
-   [(k f) (! dot-args
-             (~ (λ (args) (! k (thunk (! apply f args))))))]))
+   [(k f (upto xs #:sigil s 'o '$ #:bind))
+    (cond
+      [(! equal? s 'o)
+       (let ([k (thunk (copat [(y) (! k (thunk (! apply f xs y)))]))])
+         (! <<n-impl k))]
+      [#:else
+       (! k (thunk (! apply f xs)))])]))
 (define-thunk (! <<n) (! <<n-impl $))
 
 (define-thunk (! beep) (ret "beep"))
