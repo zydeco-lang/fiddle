@@ -102,14 +102,9 @@
 (define (rkt-stack?! args)
   (unless (list? args)
     (error "Racket FFI error: the fiddle stack uses foreign methods that are incompatible with the racket stack " args)))
-;; wraps first-order, positional-only Racket procedures. Skips the regs
-;; hash-count check and keyword-apply fallback that fo-kw-rkt->fiddle
-;; needs — those cost about half of runtime on primop-heavy hot paths.
-;; Also skips rkt-stack?! — apply/car will error on their own if a
-;; caller has pushed a foreign method struct, just with a less
-;; Fiddle-flavored message. Specializes on stack length 0..3 to avoid
-;; the apply-time arity check on the hot arithmetic path (Racket's +,
-;; -, *, <, etc. are variadic, so apply always has to length-walk).
+;; wraps first-order, positional-only Racket procedures. 
+;; The manual implementation for stack length 0-3 is ugly 
+;; but is better in practice
 (define (fo-rkt->fiddle x)
   (cond
     [(procedure? x)
@@ -128,7 +123,6 @@
     [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
 
 ;; wraps first-order Racket procedures that may accept keyword args.
-;; Drains regs into a keyword-apply on every call.
 (define (fo-kw-rkt->fiddle x)
   (cond
     [(procedure? x)
