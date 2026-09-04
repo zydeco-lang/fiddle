@@ -1,11 +1,5 @@
 # Fiddle 🎻
 
-> It’s just a two-man con...Like the guy with the fiddle, and the guy
-> who wants to buy the fiddle, and the poor sap in between them who
-> pays for the fiddle. Two men, who appear to be on opposite sides,
-> playing the same game
-> - Neil Gaiman, *American Gods*
-
 This repo contains an experimental, Scheme-like dynamically typed
 variant of Paul Blain Levy's Call-by-push-value (CBPV), called
 *Fiddle*. Fiddle is based on the "Scheme-like" model of gradual typing
@@ -47,6 +41,10 @@ The language is implemented as a "#lang" in Racket, using the
 # Performance
 
 I've done some optimization but there is still a high amount of overhead from copattern matching and combinators that use copattern matching. This is hopefully mostly just interpretive overhead of the copattern matcher, and a smarter implementation should be a big improvement.
+
+# The Name
+
+In the Scheme tradition, Fiddle is named after a con: the [fiddle game](https://en.wikipedia.org/wiki/List_of_scams#Fiddle_game). In the fiddle game, two people who appear to be opposed are actually both working together to rip off the mark. In Fiddle, values and stacks are superficially quite different but are really playing quite similar roles.
 
 [turnstile]: https://docs.racket-lang.org/turnstile/index.html
 [GTT]: https://arxiv.org/abs/1811.02440
