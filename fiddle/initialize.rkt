@@ -1,23 +1,22 @@
 #lang racket/base
 
-(require (only-in racket/unsafe/ops
-                  unsafe-unbox* unsafe-set-box*!
-                  unsafe-car unsafe-cdr
-                  unsafe-cons-list))
-
 (provide (struct-out foreign) (struct-out ctype) (struct-out method) (struct-out vtype) (struct-out tagged)
-         stack regs new-method matches-method? invoke-method new-tag matches-tag? Tag
+         regs new-method matches-method? invoke-method new-tag matches-tag? Tag
          rkt->fiddle fiddle->rkt fo-rkt->fiddle fo-kw-rkt->fiddle)
 
-;; This is the *stack*, a Box Methods
-;; where Methods is one of
-;; - '() -- meaning the calling context is expecting a value
-;; - '(cons ? Methods) -- an argument pushed on
-;; - '(method sym (listof ?) Methods) -- a method with its associated arguments and the remaining methods
-(define stack (box '()))
-
-;; This is the *register file*, implemented as a mutable hash table
-;; kw -o> val
+;; The runtime state.
+;;
+;; The *stack* is no longer a global mutable cell — it is now an ordinary
+;; list threaded as the (only) argument to every Fiddle computation. Each
+;; Fiddle computation compiles to a Racket procedure `(λ (stack) …)` and
+;; returns the value that the eventual `ret` produces.
+;;
+;; A stack is a list of Methods where each element is one of
+;; - a plain value (an argument pushed on)
+;; - a `method` struct (a nominal method frame with its args and remaining tail)
+;;
+;; The *register file* remains a global mutable hash from keywords to
+;; values. `^:` writes it and `kw-case-λ` reads/removes from it.
 (define regs (make-hash))
 
 (struct vtype (name
@@ -53,7 +52,9 @@
     (error "tried to construct a tagged value but gave the wrong number of arguments" tag args))
   (tagged (vtype-name tag) args))
 
-;; 
+;; invoke-method : stack ctype -> stack
+;; Take the top `arity` values off `meths` and pack them into a
+;; method struct on top of the remaining tail. Purely functional.
 (define (invoke-method meths cty)
   (define (loop meths remaining args)
     (cond [(zero? remaining)
@@ -99,32 +100,22 @@
                     #:key car))
   (values (map car kvs) (map cdr kvs)))
 
-(define (rkt-stack?! args)
-  (unless (list? args)
-    (error "Racket FFI error: the fiddle stack uses foreign methods that are incompatible with the racket stack " args)))
 ;; wraps first-order, positional-only Racket procedures. Skips the regs
 ;; hash-count check and keyword-apply fallback that fo-kw-rkt->fiddle
 ;; needs — those cost about half of runtime on primop-heavy hot paths.
-;; Also skips rkt-stack?! — apply/car will error on their own if a
-;; caller has pushed a foreign method struct, just with a less
-;; Fiddle-flavored message. Specializes on stack length 0..3 to avoid
-;; the apply-time arity check on the hot arithmetic path (Racket's +,
-;; -, *, <, etc. are variadic, so apply always has to length-walk).
+;; Specializes on stack length 0..3 to avoid the apply-time arity check
+;; on the hot arithmetic path (Racket's +, -, *, <, etc. are variadic,
+;; so apply always has to length-walk).
 (define (fo-rkt->fiddle x)
   (cond
     [(procedure? x)
-     (λ ()
-       (let ([s (unsafe-unbox* stack)])
-         (unsafe-set-box*! stack '())
-         (cond
-           [(null? s) (x)]
-           [(null? (unsafe-cdr s))
-            (x (unsafe-car s))]
-           [(null? (unsafe-cdr (unsafe-cdr s)))
-            (x (unsafe-car s) (unsafe-car (unsafe-cdr s)))]
-           [(null? (unsafe-cdr (unsafe-cdr (unsafe-cdr s))))
-            (x (unsafe-car s) (unsafe-car (unsafe-cdr s)) (unsafe-car (unsafe-cdr (unsafe-cdr s))))]
-           [else (apply x s)])))]
+     (λ (s)
+       (cond
+         [(null? s) (x)]
+         [(null? (cdr s)) (x (car s))]
+         [(null? (cddr s)) (x (car s) (cadr s))]
+         [(null? (cdddr s)) (x (car s) (cadr s) (caddr s))]
+         [else (apply x s)]))]
     [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
 
 ;; wraps first-order Racket procedures that may accept keyword args.
@@ -132,16 +123,13 @@
 (define (fo-kw-rkt->fiddle x)
   (cond
     [(procedure? x)
-     (λ ()
-       (define args (unsafe-unbox* stack))
-       (rkt-stack?! args)
-       (unsafe-set-box*! stack '())
+     (λ (s)
        (cond [(zero? (hash-count regs))
-              (apply x args)]
+              (apply x s)]
              [else
               (define-values (ks vs) (regs->kvs))
               (hash-clear! regs)
-              (keyword-apply x ks vs args)]))];; if the stack isn't a list, this will "go wrong"
+              (keyword-apply x ks vs s)]))]
     [else (error 'fo-kw-rkt->fiddle-is-for-fo-funs)]))
 
 ;; racket value -> fiddle value
@@ -150,18 +138,14 @@
     [(fiddle-datum? x) x]
     [(pair? x) (cons (rkt->fiddle (car x)) (rkt->fiddle (cdr x)))]
     [(procedure? x)
-     (λ ()
-       (define args (unsafe-unbox* stack))
-       (rkt-stack?! args)
-       (unsafe-set-box*! stack '())
+     (λ (s)
        (cond [(zero? (hash-count regs))
-              (rkt->fiddle (apply x (map fiddle->rkt args)))]
+              (rkt->fiddle (apply x (map fiddle->rkt s)))]
              [else
               (define-values (ks vs) (regs->kvs))
               (hash-clear! regs)
               (rkt->fiddle
-               (apply x ks (map fiddle->rkt vs) (map fiddle->rkt args))) ;; TODO: should we instead check the arity of x to determine which kws to pass?
-              ]))]
+               (apply x ks (map fiddle->rkt vs) (map fiddle->rkt s)))]))]
     [else (foreign x)]))
 
 ;; fiddle->rkt
@@ -173,14 +157,12 @@
     [(foreign? x) (foreign-payload x)]
     [(procedure? x)
      (λ args
-       (unsafe-set-box*! stack (map rkt->fiddle args))
-       (fiddle->rkt (x)))]))
+       (fiddle->rkt (x (map rkt->fiddle args))))]))
 
 (module+ test
   (require rackunit)
   (check-equal? (fiddle->rkt #t) #t)
   (check-equal? (rkt->fiddle #t) #t)
-  
+
   (check-equal? ((fiddle->rkt (rkt->fiddle list)) 1 2 3) '(1 2 3))
   (check-equal? ((fiddle->rkt (rkt->fiddle (λ args (reverse args)))) 1 2 3) '(3 2 1)))
-
