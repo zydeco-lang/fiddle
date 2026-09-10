@@ -30,6 +30,7 @@
 ;; performance downside?
 
 (require racket/stxparam
+         (only-in racket/unsafe/ops unsafe-struct-ref)
          "initialize.rkt"
          (for-syntax syntax/parse))
 (provide (all-defined-out)
@@ -304,8 +305,8 @@
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------
   (⊢ (cond- [(matches-method? current-stack v-)
-             (let- ([x- (method-args current-stack)])
-               (with-stack (method-tl current-stack) ex-))]
+             (let- ([x- (unsafe-struct-ref current-stack 1)])
+               (with-stack (unsafe-struct-ref current-stack 2) ex-))]
             [else eelse-])
      ⇒ computation)
   )

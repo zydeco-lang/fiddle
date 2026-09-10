@@ -1,5 +1,7 @@
 #lang racket/base
 
+(require (only-in racket/unsafe/ops unsafe-car unsafe-cdr))
+
 (provide (struct-out foreign) (struct-out ctype) (struct-out method) (struct-out vtype) (struct-out tagged)
          regs new-method matches-method? invoke-method new-tag matches-tag? Tag
          rkt->fiddle fiddle->rkt fo-rkt->fiddle fo-kw-rkt->fiddle)
@@ -99,9 +101,12 @@
      (λ (s)
        (cond
          [(null? s) (x)]
-         [(null? (cdr s)) (x (car s))]
-         [(null? (cddr s)) (x (car s) (cadr s))]
-         [(null? (cdddr s)) (x (car s) (cadr s) (caddr s))]
+         [(null? (unsafe-cdr s))
+          (x (unsafe-car s))]
+         [(null? (unsafe-cdr (unsafe-cdr s)))
+          (x (unsafe-car s) (unsafe-car (unsafe-cdr s)))]
+         [(null? (unsafe-cdr (unsafe-cdr (unsafe-cdr s))))
+          (x (unsafe-car s) (unsafe-car (unsafe-cdr s)) (unsafe-car (unsafe-cdr (unsafe-cdr s))))]
          [else (apply x s)]))]
     [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
 
