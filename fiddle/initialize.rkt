@@ -4,19 +4,9 @@
          regs new-method matches-method? invoke-method new-tag matches-tag? Tag
          rkt->fiddle fiddle->rkt fo-rkt->fiddle fo-kw-rkt->fiddle)
 
-;; The runtime state.
-;;
-;; The *stack* is no longer a global mutable cell — it is now an ordinary
-;; list threaded as the (only) argument to every Fiddle computation. Each
-;; Fiddle computation compiles to a Racket procedure `(λ (stack) …)` and
-;; returns the value that the eventual `ret` produces.
-;;
-;; A stack is a list of Methods where each element is one of
-;; - a plain value (an argument pushed on)
-;; - a `method` struct (a nominal method frame with its args and remaining tail)
-;;
-;; The *register file* remains a global mutable hash from keywords to
-;; values. `^:` writes it and `kw-case-λ` reads/removes from it.
+;; The *register file* is a global mutable hash from keywords to
+;; values. It is essentially shared global state, and is not
+;; saved/restored automatically like the stack is.
 (define regs (make-hash))
 
 (struct vtype (name

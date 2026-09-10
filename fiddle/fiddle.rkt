@@ -2,7 +2,33 @@
 
 ;; A CBPV Scheme-like
 ;; 
-;; See initialize.rkt for a description of the runtime state
+;; Fiddle has two kinds of terms: values and computations.
+
+;; - Values are elaborated to pure Racket terms that return a value.
+
+;; - Computations are elaborated to Racket terms that have access to a
+;;   variable holding the stack (which is bound as current-stack).
+
+;;   Every stack conceptually ends with a continuation, which is just
+;;   implemented as the ambient Racket continuation for the term.
+
+;;   Thunking creates a procedure that explicitly takes the stack as an argument, and forcing passes the current stack to the procedure.
+
+;;   Returning returns a value to the ambient continuation but only if the stack is empty. Bind executes the computation with an empty stack but continues with its result and the old stack. Conceptually this is creating a continuation that captures the current stack.
+
+;;   Application is just pushing a value onto the current stack, and case-λ pattern matches on the stack to check if there are any arguments left.
+
+;; A stack is a list of Methods where each element is one of
+;; - a plain value (an argument pushed on)
+;; - a `method` struct (a nominal method frame with its args and remaining tail)
+;;
+
+;; If we add something like opaque stack types, we would probably need
+;; to pass the continuation explicitly as the end of the list, rather
+;; than what we do now which is use the ambient Racket continuation. This
+;; would make it a very CPS-like implementation. Would that have any
+;; performance downside?
+
 (require racket/stxparam
          "initialize.rkt"
          (for-syntax syntax/parse))
@@ -14,25 +40,6 @@
 (define-base-type value)
 (define-base-type computation)
 
-;; Calling convention.
-;;
-;; A Fiddle computation compiles to an ordinary Racket expression in
-;; which `current-stack` is a lexically-bound variable holding the
-;; current stack (an ordinary list). Evaluating the expression runs
-;; the computation against that stack; the result is the value the
-;; eventual `ret` produces. Only `thunk` suspends a computation, by
-;; abstracting over the stack with a lambda — matching CBPV, where
-;; thunk is the one place computations are packaged as values and
-;; force (`basic-!`) is application.
-;;
-;; `current-stack` is a syntax parameter rather than a plain
-;; identifier because each typed-syntax rule's template introduces
-;; its own binder under its own macro scope; the parameter is the one
-;; shared name every rule refers to, and `with-stack` / `thunk-λ`
-;; re-point it at whatever binder they just introduced.
-;;
-;; Register-file writes/reads (^:, kw-case-λ) still go through the
-;; global mutable `regs` hash defined in initialize.rkt.
 (define-syntax-parameter current-stack
   (λ (stx)
     (raise-syntax-error 'current-stack "used outside with-stack / thunk-λ" stx)))
@@ -43,8 +50,6 @@
     (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
       body ...)))
 
-;; Suspend body as a 1-arg procedure over the stack. This is the only
-;; place a computation becomes a closure.
 (define-syntax-rule (thunk-λ body ...)
   (lambda (stk)
     (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
@@ -235,7 +240,7 @@
   ((x ≫ x- : value) ⊢ e^ ≫ e^- ⇐ computation)
   -----------------
   (⊢ (let- ([x- (with-stack '() e-)])  ;; run e against an empty stack
-       e^-)                              ;; run e^ against the ambient stack
+       e^-)                            ;; run e^ against the ambient stack
      ⇒ computation))
 
 (define-typed-syntax (let ([x e] ...) e^) ≫
