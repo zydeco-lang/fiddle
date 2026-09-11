@@ -68,7 +68,7 @@
        (do [v <- (! tbl 'get k #f)]
            [new-v <- (! updater v)]
          (! tbl 'set k new-v))
-       (! <<v tbl 'set k 'o v~)))
+       (! <<v tbl 'set k % vo v~)))
 
 (define-thunk (! update tbl k v updater)
   (ifc (! tbl 'has-key? k)
@@ -104,11 +104,11 @@
 
 ;; Table (list A B) Bool -> List (Table A (Listof B)) (Table B (Listof A))
 (def-thunk (! split-adjacency-tbl rel)
-  (! cl-foldr (~! <<v colist<-list 'o rel 'to-list)
+  (! cl-foldr (~! <<v colist<-list % vo rel 'to-list)
      (~ (copat [((cons (list l r) _) k l->rs r->ls)
                 [l->rs <- (! push-tbl l->rs l r)]
                 [r->ls <- (! push-tbl r->ls r l)]
                 (! k l->rs r->ls)]))
-     (~ (λ (l->rs r->ls) (! map (~! map-vals (~! <<v map car 'o swap apply '(to-list))) (list l->rs r->ls))))
+     (~ (λ (l->rs r->ls) (! map (~! map-vals (~! <<v map car % vo swap apply '(to-list))) (list l->rs r->ls))))
      empty-table
      empty-table))

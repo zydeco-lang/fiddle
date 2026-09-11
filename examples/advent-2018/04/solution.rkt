@@ -43,7 +43,7 @@
 
 (define entry-id third)
 (define-thunk  (! guard?)
-  (copat [(e) (! <<v number? 'o third e '$)]))
+  (copat [(e) (! <<v number? % vo third e % v$)]))
 
 (define-thunk (! rec<)
   (copat
@@ -75,8 +75,8 @@
            (cond
              [(! empty? es) (ret acc)]
              [#:else
-              (do [id <- (! <<v entry-id 'o car es '$)]
-                  (! <<v naps acc (list id) 'o cdr es '$))])]))]
+              (do [id <- (! <<v entry-id % vo car es % v$)]
+                  (! <<v naps acc (list id) % vo cdr es % v$))])]))]
        [naps
         (thunk
          (copat
@@ -90,18 +90,18 @@
                                  (! guards (cons g acc) es))]
                             [#:else
                              (do [awakens <- (! second es)]
-                                 [tl <- (! <<v cdr 'o cdr es '$)]
+                                 [tl <- (! <<v cdr % vo cdr es % v$)]
                                (! naps acc (cons (list hd awakens) g) tl))]))])]))])
     (! guards '())))
 
 (define-thunk (! fudge-nap asleep awake)
-  (let ([get-minute (thunk (λ (x) (! <<v fourth 'o second x '$)))])
+  (let ([get-minute (thunk (λ (x) (! <<v fourth % vo second x % v$)))])
     (! map get-minute (list asleep awake))))
 
 ;; get shit into the right format
 (define-thunk (! fudge e)
   (do [id <- (! first e)]
-      [fudged <- (! <<v map (thunk (! apply fudge-nap)) 'o cdr e '$)]
+      [fudged <- (! <<v map (thunk (! apply fudge-nap)) % vo cdr e % v$)]
     (ret (list id fudged))))
 
 ; U (CoList '(,Num ((,Num ,Num) ...))) -> Hash Num `((,Num ,Num) ...)
@@ -124,7 +124,7 @@
 
 (define-thunk (! total-sleep e)
   (do [hd <- (! first e)]
-      [sum <- (! <<v apply + 'o map (thunk (! apply (thunk (! swap -)))) 'o rest e '$)]
+      [sum <- (! <<v apply + % vo map (thunk (! apply (thunk (! swap -)))) % vo rest e % v$)]
     (ret (list hd sum))))
 
 (define-thunk (! inc-times)
@@ -135,8 +135,8 @@
       (! <<n
          cl-foreach (thunk (λ (ix)
                              (do [x <- (! vector-ref time-array ix)]
-                                 (! <<v vector-set! time-array ix 'o + 1 x '$)))) 'o
-         range lo hi '$))]))
+                                 (! <<v vector-set! time-array ix % vo + 1 x % v$)))) % no
+         range lo hi % n$))]))
 
 (define-thunk (! debug-id x)
   (do [_ <- (! displayln x)]
@@ -145,49 +145,49 @@
 (define-thunk (! best-minute naps)
   (do [times <- (! make-vector 60)]
       [_ <-
-         (! <<n cl-foreach (thunk (! inc-times times)) 'o colist<-list naps '$)]
+         (! <<n cl-foreach (thunk (! inc-times times)) % no colist<-list naps % n$)]
     [bst*time <- (! <<n
-                    minimum-by (thunk (λ (x) (! <<v - 'o second x '$))) greatest-sleep 'o
-                    cl-map (thunk (λ (i) (! <<v List i 'o vector-ref times i '$)))'o
-                    range 0 60 '$)]
+                    minimum-by (thunk (λ (x) (! <<v - % vo second x % v$))) greatest-sleep % no
+                    cl-map (thunk (λ (i) (! <<v List i % vo vector-ref times i % v$)))% no
+                    range 0 60 % n$)]
     (ret bst*time)))
 
 (define-thunk (! main-a)
   (do [l <- (! slurp-lines!)]
-      [l <- (! <<v map (thunk (! apply parse-entry)) 'o map string->list l '$)]
-    [es <- (! <<v group-entries 'o sort l rec< '$)]
+      [l <- (! <<v map (thunk (! apply parse-entry)) % vo map string->list l % v$)]
+    [es <- (! <<v group-entries % vo sort l rec< % v$)]
     [id->naps
-     <- (! <<n mk-entry-tbl 'o
-           cl-map fudge 'o colist<-list es '$)]
+     <- (! <<n mk-entry-tbl % no
+           cl-map fudge % no colist<-list es % n$)]
     ;; (ret id->naps)
-    [id*naps <- (ret (thunk (! <<v colist<-list 'o id->naps 'to-list '$)))]
-    [q <- (! <<n list<-colist 'o cl-map total-sleep id*naps '$)]
+    [id*naps <- (ret (thunk (! <<v colist<-list % vo id->naps 'to-list % v$)))]
+    [q <- (! <<n list<-colist % no cl-map total-sleep id*naps % n$)]
     [big-sleeper*sleep <- (! <<n
-                             cl-foldl^ sleepier greatest-sleep 'o
-                             cl-map total-sleep id*naps '$
+                             cl-foldl^ sleepier greatest-sleep % no
+                             cl-map total-sleep id*naps % n$
                              )]
     [big-sleeper <- (! first big-sleeper*sleep)]
     [naps  <- (! id->naps 'get big-sleeper #f)]
-    [best <- (! <<v first 'o best-minute naps '$)]
+    [best <- (! <<v first % vo best-minute naps % v$)]
     [chksum <- (! * best big-sleeper)]
     (! displayall (list 'part 'a ': 'id big-sleeper '* 'minute best '= chksum))))
 
 (define-thunk (! main-b)
   (do [l <- (! slurp-lines!)]
-      [l <- (! <<v map (thunk (! apply parse-entry)) 'o map string->list l '$)]
-    [es <- (! <<v group-entries 'o sort l rec< '$)]
+      [l <- (! <<v map (thunk (! apply parse-entry)) % vo map string->list l % v$)]
+    [es <- (! <<v group-entries % vo sort l rec< % v$)]
     [id->naps
-     <- (! <<n mk-entry-tbl 'o
-           cl-map fudge 'o colist<-list es '$)]
+     <- (! <<n mk-entry-tbl % no
+           cl-map fudge % no colist<-list es % n$)]
     [id*naps <- (! id->naps 'to-list)]
     [id*best <- (! <<n
-                   minimum-by (thunk (λ (x) (! <<v - 'o second 'o second x '$))) (list -1 greatest-sleep) 'o 
+                   minimum-by (thunk (λ (x) (! <<v - % vo second % vo second x % v$))) (list -1 greatest-sleep) % no 
          cl-map (thunk (λ (x) (do [id <- (! first x)] [naps <- (! rest x)]
                                 [best <- (! best-minute naps)]
-                                (ret (list id best))))) 'o
-         colist<-list id*naps '$)]
+                                (ret (list id best))))) % no
+         colist<-list id*naps % n$)]
     [id <- (! first id*best)] [best <- (! second id*best)]
-    [chksum <- (! <<v * id 'o first best '$)]
+    [chksum <- (! <<v * id % vo first best % v$)]
     (! displayall (list 'part 'b ': 'id id '* 'minute best '= chksum))))
 
 

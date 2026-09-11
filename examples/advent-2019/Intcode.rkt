@@ -22,10 +22,10 @@
 ;; Char ->* F Intcode-Program)
 (def/copat (! parse-chars)
   [((= 'loop) nums digits (= #\newline))
-   [num <- (! <<v parse-num 'o reverse digits '$)]
-   (! <<v reverse 'o Cons num nums '$)]
+   [num <- (! <<v parse-num % vo reverse digits % v$)]
+   (! <<v reverse % vo Cons num nums % v$)]
   [((= 'loop) nums digits (= #\,))
-   [num <- (! <<v parse-num 'o reverse digits '$)]
+   [num <- (! <<v parse-num % vo reverse digits % v$)]
    [nums <- (! Cons num nums)]
    (! parse-chars 'loop nums '())]
   [((= 'loop) nums digits c)
@@ -34,7 +34,7 @@
 
 ;; Parses Intcode program 
 (def-thunk (! parse-intcode-program (rest args))
-  [chars <- (! <<n list<-colist 'o apply read-all-chars args '$)]
+  [chars <- (! <<n list<-colist % no apply read-all-chars args % n$)]
   (! apply (~ (! parse-chars 'loop '() '())) chars))
 
 
@@ -57,7 +57,7 @@
 (def-thunk (! parse-opcode n)
   [code <- (! modulo n 100)]
   [modes-num <- (! quotient n 100)]
-  [modes <- (! <<v reverse 'o map digit<-char 'o string->list 'o number->string modes-num '$)]
+  [modes <- (! <<v reverse % vo map digit<-char % vo string->list % vo number->string modes-num % v$)]
   (! Cons code modes))
 
 ;; Nat -> Listof Parameter-Mode -> Parameter-Mode
@@ -168,7 +168,7 @@
    op))
 
 (def-thunk (! intcode-prog-loop mem iptr rbase driver)
-  [code*modes <- (! <<v parse-opcode 'o mem 'get iptr '$)]
+  [code*modes <- (! <<v parse-opcode % vo mem 'get iptr % v$)]
   [iptr <- (! + iptr 1)]
   [op <- (! first code*modes)]
   [modes <- (! rest code*modes)]

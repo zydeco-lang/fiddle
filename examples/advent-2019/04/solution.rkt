@@ -15,9 +15,9 @@
 ;; Number -> F (Listof Number)
 (def-thunk (! number->digits n)
   (! <<v
-     map digit<-char 'o
-     string->list 'o
-     number->string n '$))
+     map digit<-char % vo
+     string->list % vo
+     number->string n % v$))
 
 (def-thunk (! check-increasing first-d remaining)
   (cond [(! empty? remaining) (ret #t)]
@@ -45,9 +45,9 @@
   (! check-criteria-a d1 ds))
 
 (def-thunk (! main-a)
-  (! <<n cl-length 'o
-     cl-filter good-candidate-a? 'o
-     CANDIDATES '$))
+  (! <<n cl-length % no
+     cl-filter good-candidate-a? % no
+     CANDIDATES % n$))
 
 (def-thunk (! check-criteria-b first-d remaining)
   (! displayall)
@@ -75,6 +75,6 @@
   (! check-criteria-b d1 ds 'one-consecutive))
 
 (def-thunk (! main-b)
-  (! <<n cl-length 'o
-     cl-filter good-candidate-b? 'o
-     CANDIDATES '$))
+  (! <<n cl-length % no
+     cl-filter good-candidate-b? % no
+     CANDIDATES % n$))

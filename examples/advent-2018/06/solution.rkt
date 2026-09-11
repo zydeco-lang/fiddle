@@ -26,8 +26,8 @@
 (def-thunk (! manhattan p1 p2)
   [x1 <- (! pt-x p1)] [x2 <- (! pt-x p2)]
   [y1 <- (! pt-y p1)] [y2 <- (! pt-y p2)]
-  [dx <- (! <<v abs 'o - x1 x2 )]
-  [dy <- (! <<v abs 'o - y1 y2 )]
+  [dx <- (! <<v abs % vo - x1 x2 )]
+  [dy <- (! <<v abs % vo - y1 y2 )]
   (! + dx dy))
 
 (def/copat (! parse-pt-stk)
@@ -36,13 +36,13 @@
    (! mk-pt x y)])
 ;; String -> F Point
 (def/copat (! parse-line)
-  [(s #:bind) (! <<v apply parse-pt-stk 'o string->list s)])
+  [(s #:bind) (! <<v apply parse-pt-stk % vo string->list s)])
 
 ;; FU CoList (List ID Pt)
 (def-thunk (! parse-input)
   [ls <- (! slurp-lines!)]
-  [parsed = (~ (! <<n cl-map parse-line 'o colist<-list ls))]
-  [id*pts <- (! <<n list<-colist 'o
+  [parsed = (~ (! <<n cl-map parse-line % no colist<-list ls))]
+  [id*pts <- (! <<n list<-colist % no
                 cl-zipwith (~ (! range 0 1000000000)) parsed
                            )]
   [id*pts-c = (~ (! colist<-list id*pts))]
@@ -60,7 +60,7 @@
 (def-thunk (! tie?) (! equal? 'tie))
 
 (def-thunk (! all-points)
-  (! <<n cl-map (~ (! apply mk-pt)) 'o
+  (! <<n cl-map (~ (! apply mk-pt)) % no
      cartesian-product
      (~ (! range SMALL-X LARGE-X))
      (~ (! range SMALL-Y LARGE-Y))))
@@ -69,15 +69,15 @@
 (def-thunk (! mk-region sites)
   [w <- (! - LARGE-X SMALL-X)] [h <- (! - LARGE-Y SMALL-Y)]
   [sz <- (! * w h)] [v <- (! make-vector sz #f)]
-  [ix<-pt = (~ (copat [(pt) [x <- (! <<v swap - SMALL-X 'o pt-x pt)]
-                            [y <- (! <<v swap - SMALL-Y 'o pt-y pt)]
-                            (! <<v + x 'o * w y)]))]
+  [ix<-pt = (~ (copat [(pt) [x <- (! <<v swap - SMALL-X % vo pt-x pt)]
+                            [y <- (! <<v swap - SMALL-Y % vo pt-y pt)]
+                            (! <<v + x % vo * w y)]))]
   [find-closest
    = (~ (copat [(pt)
                 [distance
                  = (~ (λ (site)
                         (do [id <- (! first site)] [spt <- (! second site)]
-                          (! <<v List id 'o manhattan pt spt))))]
+                          (! <<v List id % vo manhattan pt spt))))]
                 [closer
                  = (~ (copat
                        [(best next)
@@ -87,32 +87,32 @@
                           [(! < db dn) (ret best)]
                           [else (ret next)])]))]
                 [ans <-
-                     (! <<n cl-foldl1 closer 'o
-                        cl-map distance 'o
+                     (! <<n cl-foldl1 closer % no
+                        cl-map distance % no
                         sites)]
                 [ix <- (! <<v ix<-pt pt)]
                 (! vector-set! v ix ans)
                 (ret ans)]))]
-  [pts = (~ (! <<n cl-map (~ (! apply mk-pt)) 'o
+  [pts = (~ (! <<n cl-map (~ (! apply mk-pt)) % no
                cartesian-product
                (~ (! range SMALL-X LARGE-X))
                (~ (! range SMALL-Y LARGE-Y))))]
   [perim-pts
    =
    (~ (! <<n
-         cl-map (~ (! apply mk-pt)) 'o
+         cl-map (~ (! apply mk-pt)) % no
          cl-append*
          (~ (! cartesian-product (~ (! cl-single SMALL-X)) (~ (! range SMALL-Y LARGE-Y))))
          (~ (! cartesian-product (~ (! range SMALL-X LARGE-X)) (~ (! cl-single SMALL-Y))))
-         (~ (! cartesian-product (~ (! <<v cl-single 'o - LARGE-X 1)) (~ (! range SMALL-Y LARGE-Y))))
-         (~ (! cartesian-product (~ (! range SMALL-X LARGE-X)) (~ (! <<v cl-single 'o - LARGE-Y 1))))
+         (~ (! cartesian-product (~ (! <<v cl-single % vo - LARGE-X 1)) (~ (! range SMALL-Y LARGE-Y))))
+         (~ (! cartesian-product (~ (! range SMALL-X LARGE-X)) (~ (! <<v cl-single % vo - LARGE-Y 1))))
          ))]
   (! cl-foreach find-closest pts)
   (ret
    (~
     (copat
-     [((= 'all-cells)) (! cl-map (~ (! <<v vector-ref v 'o ix<-pt)) pts)]
-     [((= 'perimiter-cells)) (! cl-map (~ (! <<v vector-ref v 'o ix<-pt)) perim-pts)]))))
+     [((= 'all-cells)) (! cl-map (~ (! <<v vector-ref v % vo ix<-pt)) pts)]
+     [((= 'perimiter-cells)) (! cl-map (~ (! <<v vector-ref v % vo ix<-pt)) perim-pts)]))))
 
 ;; associated-area : Region -> U CoList (List ID Point) -> F (Table ID Nat)
 
@@ -121,20 +121,20 @@
    = (~ (λ (cell) (cond [(! tie? cell) (ret #f)] [else (! first cell)])))]
   [inc-area
    = (~ (λ (id->size id) (! update id->size id 1 (~ (! + 1)))))]
-  (! <<n cl-foldl^ inc-area empty-table 'o
-     cl-filter number? 'o
-     cl-map extract-id 'o
+  (! <<n cl-foldl^ inc-area empty-table % no
+     cl-filter number? % no
+     cl-map extract-id % no
      r 'all-cells))
 
 (def-thunk (! remove-infinities r id->size)
   [extract-ids
    = (~ (λ (cell) (cond [(! tie? cell) (! cl-nil); (! <<v colist<-list 'o cdr cell)
                                        ]
-                        [else (! <<v cl-single 'o first cell)])))]
+                        [else (! <<v cl-single % vo first cell)])))]
   [remove = (~ (λ (id->size id) (! id->size 'remove id)))]
   (! <<n
-     cl-foldl^ remove id->size 'o
-     cl-bind^ extract-ids 'o 
+     cl-foldl^ remove id->size % no
+     cl-bind^ extract-ids % no 
      r 'perimiter-cells))
 
 ;; I just inspected the output for the smallest value
@@ -152,13 +152,13 @@
 ;; U(CoList (List ID Point)) -> Point -> F Bool
 (def-thunk (! close-enough? sites pt)
   [total-dist
-   <- (! <<n cl-foldl^ + 0 'o
-         cl-map (~ (! manhattan pt)) 'o
+   <- (! <<n cl-foldl^ + 0 % no
+         cl-map (~ (! manhattan pt)) % no
          cl-map second sites)]
   (! < total-dist 10000)) ; INPUT-dependent
 (def-thunk (! main-b)
   [sites <- (! parse-input)]
   (! <<n
-   cl-foldl^ + 0 'o
-   cl-map num<-bool 'o
+   cl-foldl^ + 0 % no
+   cl-map num<-bool % no
    cl-map (~ (! close-enough? sites)) all-points))

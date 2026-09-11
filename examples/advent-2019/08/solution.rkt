@@ -12,8 +12,8 @@
 (define HEIGHT 6)
 
 (def-thunk (! slurp-input)
-  [chars <- (! <<v string->list 'o first 'o slurp-lines! '$)]
-  (ret (~ (! <<n cl-map digit<-char 'o colist<-list chars '$))))
+  [chars <- (! <<v string->list % vo first % vo slurp-lines! % v$)]
+  (ret (~ (! <<n cl-map digit<-char % no colist<-list chars % n$))))
 
 (def-thunk (! summarize xs)
   [step
@@ -33,7 +33,7 @@
 (def-thunk (! main-a)
   [nums <- (! slurp-input)]
   [layer-size <- (! * WIDTH HEIGHT)]
-  [zs*ones*twos <- (! <<n minimum-by first '(+inf.0 0 0) 'o cl-map summarize! 'o chunks layer-size nums '$)]
+  [zs*ones*twos <- (! <<n minimum-by first '(+inf.0 0 0) % no cl-map summarize! % no chunks layer-size nums % n$)]
   [ones <- (! second zs*ones*twos)]
   [twos <- (! third zs*ones*twos)]
   (! * ones twos))
@@ -44,8 +44,8 @@
 
 (def-thunk (! apply-layer l1 l2)
   (! <<n list<-colist
-     'o cl-map (~ (! apply atop-pixel))
-     'o cl-zipwith (~ (! colist<-list l1)) (~ (! colist<-list l2))))
+     % no cl-map (~ (! apply atop-pixel))
+     % no cl-zipwith (~ (! colist<-list l1)) (~ (! colist<-list l2))))
 
 ;; print-row : Listof Number -> F 1
 (def-thunk (! print-row ns)
@@ -53,11 +53,11 @@
    = (~ (copat
          [((= 0)) (ret " ")]
          [((= 1)) (ret "#")]))]
-  (! <<v displayall 'o apply string-append 'o map pixel->string ns))
+  (! <<v displayall % vo apply string-append % vo map pixel->string ns))
 
 (def-thunk (! main-b)
   [nums <- (! slurp-input)]
   [layer-size <- (! * WIDTH HEIGHT)]
-  [final-layer <- (! <<n cl-foldl1 apply-layer 'o chunks layer-size nums '$)]
-  (! <<n cl-foreach print-row 'o chunks WIDTH (~ (! colist<-list final-layer)))
+  [final-layer <- (! <<n cl-foldl1 apply-layer % no chunks layer-size nums % n$)]
+  (! <<n cl-foreach print-row % no chunks WIDTH (~ (! colist<-list final-layer)))
   )

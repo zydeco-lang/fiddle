@@ -128,10 +128,10 @@
    (! displayall 'beep)
    (! db-interp cell 'c c)]
   [((= 'c) (cons (= 'inc) (cons c _)))
-   (! <<v set-box! cell 'o + 1 'o unbox cell)
+   (! <<v set-box! cell % vo + 1 % vo unbox cell)
    (! db-interp cell 'c c)]
   [((= 'c) (cons (= 'dec) (cons c _)))
-   (! <<v set-box! cell 'o swap - 1 'o unbox cell)
+   (! <<v set-box! cell % vo swap - 1 % vo unbox cell)
    (! db-interp cell 'c c)])
 
 (def-thunk (! interpc c)
@@ -291,7 +291,7 @@
   (! test-equal! (~ (! <<v run2 ex0)) (~ (ret 'true)))
   (! test-equal! (~ (! <<v run2 ex1)) (~ (ret 'false)))
   (! test-equal! (~ (! <<v run2 ex2)) (~ (ret 'true)))
-  (! test-equal! (~ (! <<v first 'o run2 thk-ex1)) (~ (ret 'thunk)))
+  (! test-equal! (~ (! <<v first % vo run2 thk-ex1)) (~ (ret 'thunk)))
   (! test-equal! (~ (! <<v run2 thk-ex2)) (~ (ret 'true)))
   (! test-equal! (~ (! <<v run2 '(if true (ret false) (ret true))))
      (~ (ret 'false)))
@@ -304,7 +304,7 @@
   (! test-equal! (~ (! <<v run3 ex0)) (~ (ret 'true)))
   (! test-equal! (~ (! <<v run3 ex1)) (~ (ret 'false)))
   (! test-equal! (~ (! <<v run3 ex2)) (~ (ret 'true)))
-  (! test-equal! (~ (! <<v first 'o run3 thk-ex1)) (~ (ret 'thunk)))
+  (! test-equal! (~ (! <<v first % vo run3 thk-ex1)) (~ (ret 'thunk)))
   (! test-equal! (~ (! <<v run3 thk-ex2)) (~ (ret 'true)))
   (! test-equal! (~ (! <<v run3 '(if true (ret false) (ret true))))
      (~ (ret 'false)))

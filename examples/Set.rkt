@@ -21,8 +21,8 @@
    [((= 'remove) x #:bind)
     [h <- (! hash-remove h x)]
     (ret (~ (! set<-hash h)))]
-   [((= 'to-list) #:bind) (! <<v map first 'o hash->list h)]
-   [((= 'debug) #:bind) (! <<v displayln 'o hash-count h)]))
+   [((= 'to-list) #:bind) (! <<v map first % vo hash->list h)]
+   [((= 'debug) #:bind) (! <<v displayln % vo hash-count h)]))
 
 
 ;; Set A
@@ -34,5 +34,5 @@
 (def-thunk (! set<-list xs)
   (cond [(! empty? xs) (ret (~ (! empty-set)))]
         [else
-         [x <- (! first xs)] [xs-set <- (! <<v set<-list 'o rest xs '$)]
+         [x <- (! first xs)] [xs-set <- (! <<v set<-list % vo rest xs % v$)]
          (! xs-set 'add x)]))

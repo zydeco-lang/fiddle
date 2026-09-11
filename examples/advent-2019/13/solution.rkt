@@ -48,7 +48,7 @@
   )
 
 (def-thunk (! joystick)
-  [c <- (! <<v string->list 'o read-line)]
+  [c <- (! <<v string->list % vo read-line)]
   (! apply
      (~ (copat
          [((= #\u001B) (= #\[) (= #\D) (rest who-cares));; left
@@ -100,6 +100,6 @@
   (! output-collector (~ (! core-game-driver canvas #f #f '()))))
 
 (def-thunk (! main-b)
-  [tail-syn <- (! <<v rest 'o parse-intcode-program "input" '$)]
+  [tail-syn <- (! <<v rest % vo parse-intcode-program "input" % v$)]
   [syntax <- (! Cons 2 tail-syn)]
   (! interp-intcode-program syntax game-driver))

@@ -14,8 +14,8 @@
 (def/copat (! y-coord) [(c #:bind) (! second c)])
 (def/copat (! scale pt n)
   [(#:bind)
-   (! idiom (~ (ret mk-coord)) (~ (! <<v * n 'o x-coord pt '$))
-                               (~ (! <<v * n 'o y-coord pt '$)))])
+   (! idiom (~ (ret mk-coord)) (~ (! <<v * n % vo x-coord pt % v$))
+                               (~ (! <<v * n % vo y-coord pt % v$)))])
 (def-thunk (! coord-add c1 c2)
   (! idiom^ mk-coord (~ (! idiom^ + (~ (! x-coord c1)) (~ (! x-coord c2))))
                      (~ (! idiom^ + (~ (! y-coord c1)) (~ (! y-coord c2))))))
@@ -26,12 +26,12 @@
 ;; x y |-> y * width + x
 (def-thunk (! ix<-pt w h pt)
   [x <- (! x-coord pt)] [y <- (! y-coord pt)]
-  (! <<v + x 'o * y w '$))
+  (! <<v + x % vo * y w % v$))
 
 (def/copat (! canvas<-vec w h v)
   [((= 'width)) (ret w)] [((= 'height)) (ret h)]
   [((= 'read) pt)
-   (! <<v vector-ref v 'o ix<-pt w h pt '$)]
+   (! <<v vector-ref v % vo ix<-pt w h pt % v$)]
   [((= 'write) pt x)
    [ix <- (! ix<-pt w h pt)]
    (! vector-set! v ix x)]
@@ -39,10 +39,10 @@
    [len <- (! * w h)]
    ;; (! displayall 'time-to-paint)
    (! <<n
-      cl-map list->string 'o
-      chunks w 'o
-      cl-map (~ (! <<v char<-elt 'o vector-ref v)) 'o
-      range 0 len '$)])
+      cl-map list->string % no
+      chunks w % no
+      cl-map (~ (! <<v char<-elt % vo vector-ref v)) % no
+      range 0 len % n$)])
 
 (def/copat (! mk-square-canvas side)
   [(#:bind) (! mk-square-canvas side 0)]

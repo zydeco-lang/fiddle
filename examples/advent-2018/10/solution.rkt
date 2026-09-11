@@ -12,8 +12,8 @@
         [else (! error msg)]))
 
 ;; A Position is a (List 'position (List Int Int))
-(def-thunk (! pos-x) (! <<v first  'o second))
-(def-thunk (! pos-y) (! <<v second 'o second))
+(def-thunk (! pos-x) (! <<v first  % vo second))
+(def-thunk (! pos-y) (! <<v second % vo second))
 (def-thunk (! mk-pos x y) (! List 'position (list x y)))
 ;; A Velocity is a (List 'velocity Int Int)
 (def-thunk (! vel-x) (! second))
@@ -39,7 +39,7 @@
            (! mk-light p v)])))])
 
 (def-thunk (! lights)
-  (! <<n cl-map (~ (! apply parse-light)) 'o cl-map string->list 'o slurp-lines~))
+  (! <<n cl-map (~ (! apply parse-light)) % no cl-map string->list % no slurp-lines~))
 
 ;; (define MIN-X -10)
 ;; (define MAX-X 20)
@@ -66,7 +66,7 @@
   [ix<-pt
    = (~ (copat [(x y) [x-off <- (! - x min-x)]
                       [y-off <- (! - y min-y)]
-                      (! <<v + x-off 'o * y-off x-size)]))]
+                      (! <<v + x-off % vo * y-off x-size)]))]
   (copat
    [((= 'set) x y c)
     
@@ -81,7 +81,7 @@
     (! <<n
        cl-map (~ (λ (y)
                    (ret (~
-                         (! <<n cl-map (~ (λ (x) (! <<v vector-ref v 'o ix<-pt x y))) 'o range min-x max-x))))) 'o
+                         (! <<n cl-map (~ (λ (x) (! <<v vector-ref v % vo ix<-pt x y))) % no range min-x max-x))))) % no
        range min-y max-y)]))
 
 (def-thunk (! mk-region min-x max-x min-y max-y)
@@ -98,8 +98,8 @@
 (def-thunk (! update-position initial velocity dt)
   [x <- (! pos-x initial)] [y <- (! pos-y initial)]
   [dx/dt <- (! vel-x velocity)] [dy/dt <- (! vel-y velocity)]
-  [x <- (! <<v + x 'o * dx/dt dt)]
-  [y <- (! <<v + y 'o * dy/dt dt)]
+  [x <- (! <<v + x % vo * dx/dt dt)]
+  [y <- (! <<v + y % vo * dy/dt dt)]
   (ret (list x y))
   )
 
@@ -112,7 +112,7 @@
             [x <- (! first xy)] [y <- (! second xy)]
             (! r 'set x y #\#))))
      lights)
-  (! <<n cl-foreach (~ (! <<v displayln 'o list->string 'o list<-colist)) 'o r 'rows)
+  (! <<n cl-foreach (~ (! <<v displayln % vo list->string % vo list<-colist)) % no r 'rows)
   (! r 'clear))
 
 ;; t = (- 2 (x1 - x2) (dx1 - dx2) - 2 (y1 - y2) (dy1 - dy2)) / (2 (dx1 - dx2)^2 + 2 (dy - dy2)^2)
@@ -131,9 +131,9 @@
   [dy-sq <- (! * dy1-2 dy1-2)]
   [x-dx- <- (! * x1-2 dx1-2)]
   [y-dy- <- (! * y1-2 dy1-2)]
-  [numerator <- (! <<v * -2 'o + x-dx- y-dy-)]
-  [denominator <- (! <<v * 2 'o + dx-sq dy-sq)]
-  (! <<v truncate 'o / numerator denominator))
+  [numerator <- (! <<v * -2 % vo + x-dx- y-dy-)]
+  [denominator <- (! <<v * 2 % vo + dx-sq dy-sq)]
+  (! <<v truncate % vo / numerator denominator))
 
 (def-thunk (! main-a)
   (! displayln 'started)
@@ -141,7 +141,7 @@
   (! displayln 'parsed)
   [r <- (! mk-region MIN-X MAX-X MIN-Y MAX-Y)]
   (! displayln 'initialized)
-  (! <<n cl-foreach (~ (! display@time r l-iter)) 'o
+  (! <<n cl-foreach (~ (! display@time r l-iter)) % no
      range 10136 10137))
 
 (def-thunk (! main-b)

@@ -23,36 +23,36 @@
 
 (define-thunk (! starts-with? l x)
   (! and
-     (~ (! <<v not 'o empty? l '$))
-     (~ (! <<v equal? x 'o car l '$))))
+     (~ (! <<v not % vo empty? l % v$))
+     (~ (! <<v equal? x % vo car l % v$))))
 
 (define-thunk (! polar-op p)
   (do [sgn <- (! first p)]
       [sgn-op <- (ifc (! equal? '+ sgn) (ret '-) (ret '+))]
-    (! <<v List sgn-op 'o second p '$)))
+    (! <<v List sgn-op % vo second p % v$)))
 
 ; FreeGroup A -> Polar A -> FreeGroup A
 (define-thunk (! free-act s x)
   (cond
-    [(! <<v starts-with? s 'o polar-op x '$) (! cdr s)]
+    [(! <<v starts-with? s % vo polar-op x % v$) (! cdr s)]
     [#:else (ret (cons x s))]))
 
 (define-thunk (! main-a)
   (do [reduced <- (! <<n
-                     cl-foldl^ free-act '() 'o
-                     cl-map parse-atom 'o
-                     cl-filter letter? 'o
-                     read-all-chars '$)]
+                     cl-foldl^ free-act '() % no
+                     cl-map parse-atom % no
+                     cl-filter letter? % no
+                     read-all-chars % n$)]
       (! length reduced)))
 
 (define-thunk (! remove-and-reduce)
   (copat
    [(un-reduced c)
     (do [reduced <- (! <<n
-                       cl-foldl^ free-act '() 'o
-                       cl-filter (~ (λ (x) (! <<v not 'o equal? c 'o second x '$))) 'o
-                       colist<-list un-reduced '$)]
-        (! <<v log 'o List c 'o length reduced '$))]))
+                       cl-foldl^ free-act '() % no
+                       cl-filter (~ (λ (x) (! <<v not % vo equal? c % vo second x % v$))) % no
+                       colist<-list un-reduced % n$)]
+        (! <<v log % vo List c % vo length reduced % v$))]))
 
 ;; just did a visual inspection: the smallest answer is much smaller
 ;; so it's obvious
@@ -62,14 +62,14 @@
 ;; word from part a.
 (define-thunk (! main-b)
   (do [reduced <- (! <<n
-                     cl-foldl^ free-act '() 'o
-                     cl-map parse-atom 'o
-                     cl-filter letter? 'o
-                     read-all-chars '$)]
+                     cl-foldl^ free-act '() % no
+                     cl-map parse-atom % no
+                     cl-filter letter? % no
+                     read-all-chars % n$)]
       [cs*counts
        <-
        (! <<n
-          list<-colist 'o
-          cl-map (~ (! remove-and-reduce reduced)) 'o
-          (~ (! <<v colist<-list 'o string->list UPPERS '$)) '$)]
+          list<-colist % no
+          cl-map (~ (! remove-and-reduce reduced)) % no
+          (~ (! <<v colist<-list % vo string->list UPPERS % v$)) % n$)]
     (ret 'done)))

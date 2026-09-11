@@ -27,7 +27,7 @@
   [ix<-pt
    = (~ (copat [(x y) [x-off <- (! - x min-x)]
                       [y-off <- (! - y min-y)]
-                      (! <<v + x-off 'o * y-off x-size)]))]
+                      (! <<v + x-off % vo * y-off x-size)]))]
   (copat
    [((= 'set) x y c)
     
@@ -41,7 +41,7 @@
     (! <<n
        cl-map (~ (λ (y)
                    (ret (~
-                         (! <<n cl-map (~ (λ (x) (! <<v vector-ref v 'o ix<-pt x y))) 'o range min-x max-x))))) 'o
+                         (! <<n cl-map (~ (λ (x) (! <<v vector-ref v % vo ix<-pt x y))) % no range min-x max-x))))) % no
        range min-y max-y)]))
 
 (def-thunk (! mk-region min-x max-x min-y max-y)
@@ -76,9 +76,9 @@
    = (~ (λ (xy)
           (do [x <- (! first xy)] [y <- (! second xy)]
               (cond
-                [(! and (~ (! <<v >= 300 'o + x 2)) (~ (! <<v >= 300 'o + y 2)))
-                 [3x3-power <- (! <<n cl-foldl^ + 0 'o cl-map (~ (! apply read-power)) 'o
-                                  cartesian-product (~ (! <<v range x 'o + x 3)) (~ (! <<v range y 'o + y 3)))]
+                [(! and (~ (! <<v >= 300 % vo + x 2)) (~ (! <<v >= 300 % vo + y 2)))
+                 [3x3-power <- (! <<n cl-foldl^ + 0 % no cl-map (~ (! apply read-power)) % no
+                                  cartesian-product (~ (! <<v range x % vo + x 3)) (~ (! <<v range y % vo + y 3)))]
                  ; (! displayall '3x3-power 3x3-power x y)
                  (! cl-cons (list 3x3-power x y) cl-nil)]
                 [else (! cl-nil)]))))]
@@ -86,7 +86,7 @@
    = (~ (λ (row)
           (do (! cl-foreach (~ (do (λ (x) (do (! display x) (! display " "))))) row)
               (! display "\n"))))]
-  [3x3-powers = (~ (! <<n cl-bind^ 3x3-power 'o
+  [3x3-powers = (~ (! <<n cl-bind^ 3x3-power % no
                       cartesian-product (~ (! range 1 301)) (~ (! range 1 301))))]
   ;; (! list<-colist 3x3-powers)
   ;(! cl-foreach displayln 3x3-powers)

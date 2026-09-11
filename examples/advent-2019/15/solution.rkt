@@ -24,7 +24,7 @@
 
 ;; 
 (def-thunk (! arrow-input)
-  [c <- (! <<v string->list 'o read-line)]
+  [c <- (! <<v string->list % vo read-line)]
   (! apply
      (~ (copat
          [((= #\u001B) (= #\[) (= #\A) (rest who-cares)) ;; up
@@ -60,14 +60,14 @@
   [((= 4)) (ret 3)])
 
 (def-thunk (! mv-pos posn dir)
-  (! <<v coord-add posn 'o coord<-arrow dir))
+  (! <<v coord-add posn % vo coord<-arrow dir))
 
 (def-thunk (! trace-inputs key pos came_from dirs)
   ;; (! <<v displayall 'trace-inputs pos)
   ;; (! <<v displayall 'o came_from 'to-list)
   [next-dir <- (! came_from 'get pos #f)]
   (cond [(ret next-dir)
-         [pos <- (! <<v mv-pos pos 'o reverse-dir next-dir)]
+         [pos <- (! <<v mv-pos pos % vo reverse-dir next-dir)]
          (! trace-inputs key pos came_from (cons next-dir dirs))]
         [else (! List key dirs)]))
 
@@ -86,18 +86,18 @@
   (cond [(! empty? frontier) (! List 'seen-it-all #f)]
         [else
          [rev_front <- (! reverse frontier)]
-         [next <- (! first rev_front)] [frontier <- (! <<v reverse 'o rest rev_front '$)]
+         [next <- (! first rev_front)] [frontier <- (! <<v reverse % vo rest rev_front % v$)]
          [adjs = '(1 2 3 4)]
-         [goals <- (! filter (~ (! <<v equal? goal 'o mv-pos next)) adjs)]
-         [unknowns <- (! filter (~ (! <<v equal? #\space 'o c 'read 'o mv-pos next)) adjs)]
+         [goals <- (! filter (~ (! <<v equal? goal % vo mv-pos next)) adjs)]
+         [unknowns <- (! filter (~ (! <<v equal? #\space % vo c 'read % vo mv-pos next)) adjs)]
          [knowns <- (! <<v
-                       filter (~ (! <<v not 'o came_from 'has-key? 'o mv-pos next)) 'o
-                       filter (~ (! <<v known-empty-space? 'o c 'read 'o mv-pos next)) adjs)]
-         (cond [(! <<v not 'o empty? goals)
+                       filter (~ (! <<v not % vo came_from 'has-key? % vo mv-pos next)) % vo
+                       filter (~ (! <<v known-empty-space? % vo c 'read % vo mv-pos next)) adjs)]
+         (cond [(! <<v not % vo empty? goals)
                 [goal-dir <- (! first goals)]
                 (! trace-inputs 'goal next came_from (cons goal-dir '()))]
-               [(! <<v not 'o empty? unknowns)
-                [final-dir <- (! <<v List 'o first unknowns)]
+               [(! <<v not % vo empty? unknowns)
+                [final-dir <- (! <<v List % vo first unknowns)]
                 (! trace-inputs 'explore next came_from final-dir)]
                [else
                 [fron*cf <- 
@@ -118,13 +118,13 @@
   [frontier <- (! List start)]
   (! bfs-loop c goal came_from frontier))
 
-(def-thunk (! next-move c ptr) (! <<v second 'o bfs c ptr #f))
+(def-thunk (! next-move c ptr) (! <<v second % vo bfs c ptr #f))
 
 (def-thunk (! shortest-path c start goal)
   [outp <- (! bfs c start goal)]
   [key <- (! first outp)]
   ((copat
-    [((= 'goal)) (! <<v length 'o second outp)]
+    [((= 'goal)) (! <<v length % vo second outp)]
     [((= 'explore)) (ret #f)])
    key))
 
@@ -142,7 +142,7 @@
   [inp <- (! first inputs)] [inputs <- (! rest inputs)]
   (! iK inp (~ (copat
    [(outp oK)
-    [next-pos <- (! <<v coord-add ptr 'o coord<-arrow inp '$)]
+    [next-pos <- (! <<v coord-add ptr % vo coord<-arrow inp % v$)]
     ((copat
       [((= 0))
        (! c 'write next-pos #\#)
@@ -170,7 +170,7 @@
 (def-thunk (! main-a)
   [syn <- (! parse-intcode-program "input")]
   [driver <- (! initialize-driver-a )]
-  (! <<v displayall 'o interp-intcode-program syn driver))
+  (! <<v displayall % vo interp-intcode-program syn driver))
 
 (def-thunk (! maximum x y)
   (cond [(! < x y) (ret y)]
@@ -183,12 +183,12 @@
   (cond [(! empty? frontier) (ret cur-max)]
         [else
          [rev_front <- (! reverse frontier)]
-         [next <- (! first rev_front)] [frontier <- (! <<v reverse 'o rest rev_front '$)]
-         [next-dist+1 <- (! <<v + 1 'o distances 'get next #f)]
+         [next <- (! first rev_front)] [frontier <- (! <<v reverse % vo rest rev_front % v$)]
+         [next-dist+1 <- (! <<v + 1 % vo distances 'get next #f)]
          [adjs = '(1 2 3 4)]
          [knowns <- (! <<v
-                       filter (~ (! <<v not 'o distances 'has-key? 'o mv-pos next)) 'o
-                       filter (~ (! <<v known-empty-space? 'o c 'read 'o mv-pos next)) adjs)]
+                       filter (~ (! <<v not % vo distances 'has-key? % vo mv-pos next)) % vo
+                       filter (~ (! <<v known-empty-space? % vo c 'read % vo mv-pos next)) adjs)]
          [max*fron*dist <- 
                   (! cl-foldl (~ (! colist<-list knowns))
                      (~ (copat
@@ -225,7 +225,7 @@
   [inp <- (! first inputs)] [inputs <- (! rest inputs)]
   (! iK inp (~ (copat
    [(outp oK)
-    [next-pos <- (! <<v coord-add ptr 'o coord<-arrow inp '$)]
+    [next-pos <- (! <<v coord-add ptr % vo coord<-arrow inp % v$)]
     ((copat
       [((= 0))
        (! c 'write next-pos #\#)
@@ -253,4 +253,4 @@
 (def-thunk (! main-b)
   [syn <- (! parse-intcode-program "input")]
   [driver <- (! initialize-driver-b)]
-  (! <<v displayall 'o interp-intcode-program syn driver))
+  (! <<v displayall % vo interp-intcode-program syn driver))

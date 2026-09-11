@@ -20,7 +20,7 @@
 ;; lazily generate all pairs of an element of a list and the list with that element removed
 (def-thunk (! plucks xs)
   [with-removed
-    = (~ (λ (x) (! <<v List x 'o remove x xs '$)))]
+    = (~ (λ (x) (! <<v List x % vo remove x xs % v$)))]
   (! cl-map with-removed (~ (! colist<-list xs))))
 
 ;; Listof A -> CoList (Listof A)
@@ -51,7 +51,7 @@
 (def-thunk (! main-a)
   [prog <- (! parse-intcode-program)]
   [combos = (~ (! permutations '(0 1 2 3 4)))]
-  (! <<n maximum 'o cl-map (~ (! run-intcode-flow prog 0)) combos '$))
+  (! <<n maximum % no cl-map (~ (! run-intcode-flow prog 0)) combos % n$))
 
 (def/copat (! two-inputs-then-output-then-save-input-req in1 in2 thenK)
   [((= 'input) inK)
@@ -111,6 +111,6 @@
 (def-thunk (! main-b)
   [prog <- (! parse-intcode-program)]
   [combos = (~ (! permutations '(5 6 7 8 9)))]
-  (! <<n maximum 'o cl-map (~ (λ (phases)
+  (! <<n maximum % no cl-map (~ (λ (phases)
                                 (do (! displayall 'launching phases)
-                                    (! run-intcode-loop prog '() phases)))) combos '$))
+                                    (! run-intcode-loop prog '() phases)))) combos % n$))

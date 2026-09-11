@@ -17,28 +17,28 @@
 
 (def-thunk (! unseen-key? held-keys char)
   (! and (~ (! lower-case? char))
-         (~ (! <<n (~ (! <<v not 'o any?)) 'o cl-map (~ (! equal? char)) 'o colist<-list held-keys))))
+         (~ (! <<n (~ (! <<v not % vo any?)) % no cl-map (~ (! equal? char)) % no colist<-list held-keys))))
 
 (def-thunk (! downcase c)
   (cond [(! lower-case? c) (ret c)]
-        [(! upper-case? c) (! <<v integer->char 'o + 32 'o char->integer c)]))
+        [(! upper-case? c) (! <<v integer->char % vo + 32 % vo char->integer c)]))
 
 (def-thunk (! empty-space? held-keys char)
   (! or (~ (! equal? #\. char)) (~ (! equal? #\@ char))
      (~ (! and (~ (! letter? char))
-           (~ (! <<v swap member? (~ (! colist<-list held-keys)) 'o downcase char))))))
+           (~ (! <<v swap member? (~ (! colist<-list held-keys)) % vo downcase char))))))
 
 ;; 
 (def-thunk (! find-next-key c have-keys distances found-keys frontier)
   (cond [(! empty? frontier) (ret found-keys)]
         [else
          [rev_front <- (! reverse frontier)]
-         [next <- (! first rev_front)] [frontier <- (! <<v reverse 'o rest rev_front '$)]
+         [next <- (! first rev_front)] [frontier <- (! <<v reverse % vo rest rev_front % v$)]
          [cross <- (! idiom^ List (~ (! mk-coord 0 1)) (~ (! mk-coord 0 -1)) (~ (! mk-coord 1 0)) (~ (! mk-coord -1 0)))]
          [adjs <- (! map (~ (! coord-add next)) cross)]
 
-         [new-keys <- (! filter (~ (! <<v unseen-key? have-keys 'o map (~ (! c 'read)) adjs)) )]
-         [new-spaces <- (! filter (~ (! <<v empty-space? have-keys 'o map (~ (! c 'read)) adjs)))]
+         [new-keys <- (! filter (~ (! <<v unseen-key? have-keys % vo map (~ (! c 'read)) adjs)) )]
+         [new-spaces <- (! filter (~ (! <<v empty-space? have-keys % vo map (~ (! c 'read)) adjs)))]
          ;; add them to the distances table with dist of next +1
          ;; add the new keys to the found-keys set
          ;; add the new spaces to the frontier
@@ -73,18 +73,18 @@
 
 
 (def-thunk (! starting-point c w h)
-  (! <<n (~ (! <<v clv-hd 'o $)) 'o
-     cl-filter (~ (! <<v equal? #\@ 'o c 'read)) 'o
-     cl-map (~ (! apply mk-coord)) 'o
+  (! <<n (~ (! <<v clv-hd % vo $)) % no
+     cl-filter (~ (! <<v equal? #\@ % vo c 'read)) % no
+     cl-map (~ (! apply mk-coord)) % no
      cartesian-product (~ (! range 0 w)) (~ (! range 0 h))))
 
 (def-thunk (! main-a (rest args))
-  [lines <- (! <<n list<-colist 'o cl-map string->list 'o apply slurp-lines~ args)]
-  [width <- (! <<v length 'o first lines)]
+  [lines <- (! <<n list<-colist % no cl-map string->list % no apply slurp-lines~ args)]
+  [width <- (! <<v length % vo first lines)]
   [height <- (! length lines)]
-  [v <- (! <<v list->vector 'o apply append lines)]
+  [v <- (! <<v list->vector % vo apply append lines)]
   [c = (~ (! canvas<-vec width height v))]
-  (! <<n cl-foreach displayall 'o c 'paint Ret)
+  (! <<n cl-foreach displayall % no c 'paint Ret)
   [start <- (! starting-point c width height)]
   (ret 'fuckoff)
   )

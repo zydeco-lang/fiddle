@@ -13,8 +13,8 @@
 (define-rec-thunk (! parse s)
   (do [l <- (! string->list s)]
       [sgn <- (! car l)]
-    [n <- (! <<v parse-num 'o cdr l '$)]
-    (! <<v * n 'o num<-sgn sgn '$)))
+    [n <- (! <<v parse-num % vo cdr l % v$)]
+    (! <<v * n % vo num<-sgn sgn % v$)))
 
 ; solution for part 1
 (define-rec-thunk (! loop acc)

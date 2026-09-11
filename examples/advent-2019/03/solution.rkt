@@ -20,12 +20,12 @@
    (! parse-chars 'length wires dirs dir '())]
   [((= 'length) wires dirs dir digits (= #\newline))
    ;; (! displayall 'len wires dirs dir digits 'newline)
-   [direction <- (! <<v mk-direction dir 'o parse-num 'o reverse digits '$)]
-   [wires <- (! <<v swap Cons wires 'o reverse 'o Cons direction dirs '$)]
+   [direction <- (! <<v mk-direction dir % vo parse-num % vo reverse digits % v$)]
+   [wires <- (! <<v swap Cons wires % vo reverse % vo Cons direction dirs % v$)]
    (! parse-chars 'start-line wires)]
   [((= 'length) wires dirs dir digits (= #\,))
    ;; (! displayall 'len wires dirs dir digits 'comma)
-   [direction <- (! <<v mk-direction dir 'o parse-num 'o reverse digits '$)]
+   [direction <- (! <<v mk-direction dir % vo parse-num % vo reverse digits % v$)]
    [dirs <- (! Cons direction dirs)]
    (! parse-chars 'dir wires dirs)]
   [((= 'length) wires dirs dir digits digit)
@@ -38,7 +38,7 @@
 
 ;; 
 (def-thunk (! parse-input)
-  [cs <- (! <<n list<-colist 'o read-all-chars '$)]
+  [cs <- (! <<n list<-colist % no read-all-chars % n$)]
   (! apply parse-chars cs))
 
 ;; A Line is one of
@@ -115,8 +115,8 @@
                   [tot-dist
                    <- (! idiom (~ (ret +))
                          (~ (! + hor-dist vert-dist))
-                         (~ (! <<v abs 'o - start-x x))
-                         (~ (! <<v abs 'o - start-y y)))]
+                         (~ (! <<v abs % vo - start-x x))
+                         (~ (! <<v abs % vo - start-y y)))]
                   (! idiom (~ (ret List))
                      (~ (! idiom (~ (ret List)) (~ (ret tot-dist)) (~ (! List x y)))))]
                  [else
@@ -126,7 +126,7 @@
    or1 or2))
 
 (def-thunk (! intersection l1 l2)
-  (! <<v map second 'o distance*intersection-pairs l1 l2 '$))
+  (! <<v map second % vo distance*intersection-pairs l1 l2 % v$))
 
 (def-thunk (! manhattan-to-origin x y)
   (! idiom (~ (ret +)) (~ (! abs x)) (~ (! abs y))))
@@ -148,28 +148,28 @@
   ;; (! displayall 'not-the-line-pairs-fualt)
   [not-both-zero =
                  (~ (copat [(x y)
-                            (! <<v not 'o and (~ (! zero? x)) (~ (! zero? y)) '$)]))]
+                            (! <<v not % vo and (~ (! zero? x)) (~ (! zero? y)) % v$)]))]
   (! <<n
-   minimum-by (~ (! apply manhattan-to-origin)) '(+inf.0 +inf.0) 'o
-   cl-filter (~ (! apply not-both-zero)) 'o
+   minimum-by (~ (! apply manhattan-to-origin)) '(+inf.0 +inf.0) % no
+   cl-filter (~ (! apply not-both-zero)) % no
    cl-foldr line-pairs
    (~ (λ (line*line tl)
         (do [pts <- (! apply intersection line*line)]
             (! cl-append (~ (! colist<-list pts)) tl))))
    cl-nil
-   '$))
+   % n$))
 
 (def-thunk (! main-b)
   [line-pairs <- (! all-line-pairs)]
   ;; [_ <- (! list<-colist line-pairs)]
   ;; (! displayall 'not-the-line-pairs-fualt)
-  [non-zero-dist = (~ (copat [(x y) (! <<v not 'o zero? x '$)]))]
+  [non-zero-dist = (~ (copat [(x y) (! <<v not % vo zero? x % v$)]))]
   (! <<n
-   minimum-by first '(+inf.0 something-is-wrong) 'o
-   cl-filter (~ (! apply non-zero-dist)) 'o
+   minimum-by first '(+inf.0 something-is-wrong) % no
+   cl-filter (~ (! apply non-zero-dist)) % no
    cl-foldr line-pairs
    (~ (λ (line*line tl)
         (do [pts <- (! apply distance*intersection-pairs line*line)]
             (! cl-append (~ (! colist<-list pts)) tl))))
    cl-nil
-   '$))
+   % n$))

@@ -48,10 +48,10 @@
    [((= 'output) num-turn k)
     [lr <- (! LR<-num num-turn)]
     [dir <- (! turn dir lr)]
-    [loc <- (! <<v coord-add loc 'o vec<-dir dir '$)]
+    [loc <- (! <<v coord-add loc % vo vec<-dir dir % v$)]
     (! k (~ (! a-driver canvas loc dir painted)))])))]
   [((= 'halt))
-   (! <<v List 'num-ever-painted: 'o length 'o set->list 'o list->set painted '$)])
+   (! <<v List 'num-ever-painted: % vo length % vo set->list % vo list->set painted % v$)])
 
 (def-thunk (! main-a)
   [syn <- (! parse-intcode-program)]
@@ -76,7 +76,7 @@
    [((= 'output) num-turn k)
     [lr <- (! LR<-num num-turn)]
     [dir <- (! turn dir lr)]
-    [loc <- (! <<v coord-add loc 'o vec<-dir dir '$)]
+    [loc <- (! <<v coord-add loc % vo vec<-dir dir % v$)]
     (! k (~ (! b-driver canvas loc dir)))])))]
   [((= 'halt))
    (! canvas 'paint paint-color)])

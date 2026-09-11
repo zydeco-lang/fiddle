@@ -25,14 +25,14 @@
          [v^ <- (! make-vector ix*2 0)]
          (! <<n cl-foreach (~ (λ (ix)
                                 (do [x <- (! vector-ref v ix)]
-                                    (! vector-set! v^ ix x)))) 'o
-            range 0 len '$)
+                                    (! vector-set! v^ ix x)))) % no
+            range 0 len % n$)
          (! set-box! b v^)]))
 
 (def/copat (! memory b)
   [((= 'get) ix #:bind)
    (! maybe-grow b ix )
-   (! <<v swap vector-ref ix 'o unbox b '$)]
+   (! <<v swap vector-ref ix % vo unbox b % v$)]
 
   [((= 'set) ix a #:bind)
    (! maybe-grow b ix)
@@ -44,10 +44,10 @@
   [((= 'debug) #:bind)
    [v <- (! unbox b)]
    [len <- (! vector-length v)]
-   (! <<n cl-map (~ (! vector-ref v)) 'o range 0 len)])
+   (! <<n cl-map (~ (! vector-ref v)) % no range 0 len)])
 
 (def-thunk (! initialize-memory l #:bind)
-  [b <- (! <<v box 'o list->vector l '$)]
+  [b <- (! <<v box % vo list->vector l % v$)]
   (ret (~ (! memory b))))
 
 (def-thunk (! mutable-flexvec v)
@@ -58,12 +58,12 @@
     (! vector-set! v ix a)
     (ret (~ (! mutable-flexvec v)))]
    [((= 'update) ix up #:bind)
-    (! <<v vector-set! v ix 'o up 'o vector-ref v ix)
+    (! <<v vector-set! v ix % vo up % vo vector-ref v ix)
     (ret (~ (! mutable-flexvec v)))]
    [((= 'size) #:bind) (! vector-length v)]
    [((= 'to-colist) #:bind)
     [len <- (! vector-length v)]
-    (! <<n cl-map (~ (! vector-ref v)) 'o range 0 len)]))
+    (! <<n cl-map (~ (! vector-ref v)) % no range 0 len)]))
 
 (def-thunk (! mutable-flexvec<-list l #:bind)
   [v <- (! list->vector l)]

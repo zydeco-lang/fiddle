@@ -20,10 +20,10 @@
 ;; todo: develop a mo-fucking parsing library!
 (def/copat (! parse-chars)
   [((= 'loop) nums digits (= #\newline))
-   [num <- (! <<v parse-num 'o reverse digits '$)]
-   (! <<v reverse 'o Cons num nums '$)]
+   [num <- (! <<v parse-num % vo reverse digits % v$)]
+   (! <<v reverse % vo Cons num nums % v$)]
   [((= 'loop) nums digits (= #\,))
-   [num <- (! <<v parse-num 'o reverse digits '$)]
+   [num <- (! <<v parse-num % vo reverse digits % v$)]
    [nums <- (! Cons num nums)]
    (! parse-chars 'loop nums '())]
   [((= 'loop) nums digits c)
@@ -48,17 +48,17 @@
    ((copat
      [((= 99)) (ret 'done)]
      [(op)
-      [src1 <- (! <<v memory 'get 'o + i 1 '$)]
-      [src2 <- (! <<v memory 'get 'o + i 2 '$)]
-      [dest <- (! <<v memory 'get 'o + i 3 '$)]
+      [src1 <- (! <<v memory 'get % vo + i 1 % v$)]
+      [src2 <- (! <<v memory 'get % vo + i 2 % v$)]
+      [dest <- (! <<v memory 'get % vo + i 3 % v$)]
       (! operation memory op src1 src2 dest)
-      (! <<v eval-opcodes 'loop memory 'o + i 4 '$)])
+      (! <<v eval-opcodes 'loop memory % vo + i 4 % v$)])
     code)]
   [(memory #:bind)
    (! eval-opcodes 'loop memory 0)])
 
 (def-thunk (! parse-opcodes)
-  [chars <- (! <<n list<-colist 'o read-all-chars '$)]
+  [chars <- (! <<n list<-colist % no read-all-chars % n$)]
   (! apply parse-chars chars))
 
 (def-thunk (! run-opcode-program opcodes inp1 inp2)

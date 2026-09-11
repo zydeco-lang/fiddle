@@ -33,22 +33,22 @@
 (def-thunk (! intersection? canvas x y)
   [pt <- (! mk-coord x y)]
   [cross <- (! idiom^ List (~ (! mk-coord 0 0)) (~ (! mk-coord 0 1)) (~ (! mk-coord 0 -1)) (~ (! mk-coord 1 0)) (~ (! mk-coord -1 0)))]
-  (! <<n cl-foldr^ and (~ (ret #t)) 'o
-     cl-map Thunk 'o
-     cl-map (~ (! <<v equal? #\# 'o canvas 'read)) 'o
-     cl-map (~ (! coord-add pt)) 'o
+  (! <<n cl-foldr^ and (~ (ret #t)) % no
+     cl-map Thunk % no
+     cl-map (~ (! <<v equal? #\# % vo canvas 'read)) % no
+     cl-map (~ (! coord-add pt)) % no
      colist<-list cross))
 
 (def-thunk (! main-a)
   [syn <- (! parse-intcode-program "input")]
   [driver <- (! initialize-driver-a)]
   [canvas <- (! interp-intcode-program syn driver)]
-  (! <<n cl-foreach displayall 'o canvas 'paint Ret)
+  (! <<n cl-foreach displayall % no canvas 'paint Ret)
   [w-2 <- (! - WIDTH 2)]
   [h-2 <- (! - HEIGHT 2)]
-  (! <<n cl-foldl^ + 0 'o
-     cl-map (~ (! apply *)) 'o
-     cl-filter (~ (! apply (~ (! intersection? canvas)))) 'o
+  (! <<n cl-foldl^ + 0 % no
+     cl-map (~ (! apply *)) % no
+     cl-filter (~ (! apply (~ (! intersection? canvas)))) % no
      cartesian-product (~ (! range 1 w-2)) (~ (! range 1 h-2))))
 
 ;; The correct instructions:
@@ -97,7 +97,7 @@
 (def-thunk (! driver-b c inps last-out)
   (copat
    [((= 'input))
-    [inp <- (! <<v map char->integer 'o string->list 'o first inps)]
+    [inp <- (! <<v map char->integer % vo string->list % vo first inps)]
     [inps <- (! rest inps)]
     (! displayall 'inputting inp)
     (! enter-string inp (~ (! driver-b c inps last-out)) 'input)]

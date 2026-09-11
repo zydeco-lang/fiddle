@@ -17,7 +17,7 @@
 ;; Tokenize
 (def-thunk (! nums)
   (! <<n
-     list<-colist 'o cl-map parse-num 'o sep-by #\space 'o read-all-chars))
+     list<-colist % no cl-map parse-num % no sep-by #\space % no read-all-chars))
 
 ;; Nat ... -> F Nat
 (def-thunk (! parse)
@@ -86,7 +86,7 @@
          [(k metadata# tots tot (= 'stk) ix)
           [metadata# <- (! - metadata# 1)]
           (! stream-ref tots ix)
-          [tot <- (! <<v + tot 'o stream-ref tots ix)]
+          [tot <- (! <<v + tot % vo stream-ref tots ix)]
           (! deref-metadata k metadata# tots tot 'stk)]))])
     (! tree abort 0 'stk)))
 

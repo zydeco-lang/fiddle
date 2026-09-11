@@ -38,7 +38,7 @@
   (copat
    [(#:bind) (ret acc)]
    [(d) [n <- (! digit<-char d)]
-        [acc <- (! <<v + n 'o * 10 acc '$)]
+        [acc <- (! <<v + n % vo * 10 acc % v$)]
         (! parse-num-loop acc)]))
 #;
 (define-rec-thunk (! parse-num-loop acc ds)
@@ -53,7 +53,7 @@
 
 (def/copat (! parse-num^)
   [((= #\+)) (! parse-num-loop 0)]
-  [((= #\-)) (! <<v - 'o parse-num-loop 0)]
+  [((= #\-)) (! <<v - % vo parse-num-loop 0)]
   [() (! parse-num-loop 0)])
 
 ;; Parses a list of characters into a natural number

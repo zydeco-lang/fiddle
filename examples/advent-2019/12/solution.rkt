@@ -44,10 +44,10 @@
               (! List planet-posn planet-vel)
             )))]
   (! <<n
-     cl-foldl^ pull-one-planet planet 'o
-     cl-map first 'o
-     cl-filter (~ (! <<v not 'o equal? planet)) 'o
-     colist<-list system '$)
+     cl-foldl^ pull-one-planet planet % no
+     cl-map first % no
+     cl-filter (~ (! <<v not % vo equal? planet)) % no
+     colist<-list system % n$)
   )
 
 (def-thunk (! apply-velocity planet)
@@ -57,10 +57,10 @@
 
 ;; System -> System
 (def-thunk (! evolve system)
-  (! <<n list<-colist 'o
-        cl-map apply-velocity 'o 
-        cl-map (~ (! apply-gravity system)) 'o
-        colist<-list system '$)
+  (! <<n list<-colist % no
+        cl-map apply-velocity % no 
+        cl-map (~ (! apply-gravity system)) % no
+        colist<-list system % n$)
   )
 
 (def-thunk (! simulate-system state)
@@ -81,25 +81,25 @@
 
 (def-thunk (! planet-energy planet)
   [posn <- (! first planet)] [vel <- (! second planet)]
-  [potential <- (! <<v apply + 'o map abs posn '$)]
-  [kinetic <- (! <<v apply + 'o map abs vel '$)]
+  [potential <- (! <<v apply + % vo map abs posn % v$)]
+  [kinetic <- (! <<v apply + % vo map abs vel % v$)]
   (! * potential kinetic))
 
 (def-thunk (! sys-energy system)
-  (! <<n cl-foldl^ + 0 'o
-     cl-map planet-energy 'o
+  (! <<n cl-foldl^ + 0 % no
+     cl-map planet-energy % no
      colist<-list system))
 
 (def-thunk (! energies-of-system system)
   (! <<n
-     cl-map sys-energy 'o
-     simulate-system system '$))
+     cl-map sys-energy % no
+     simulate-system system % n$))
 
 (def-thunk (! main-a)
-  (! <<n cl-foreach displayall 'o
+  (! <<n cl-foreach displayall % no
      cl-zipwith
      (~ (! range 0 1001))
-     (~ (! energies-of-system input)) '$))
+     (~ (! energies-of-system input)) % n$))
 
 (def-thunk (! find-repeat extract xs)
   [step
@@ -133,6 +133,6 @@
          ; (! <<n find-repeat second 'o numbered 'o simulate-system y-sys '$)
          ]
   (! displayall y-rep)
-  [z-rep <- (! <<n find-repeat second 'o numbered 'o simulate-system z-sys '$)]
+  [z-rep <- (! <<n find-repeat second % no numbered % no simulate-system z-sys % n$)]
   (! displayall z-rep)
   (! idiom^ lcm (~ (! first x-rep)) (~ (! first y-rep))(~ (! first z-rep))))

@@ -64,10 +64,10 @@
 
 (define-thunk (! calc-23s)
   (copat
-   [(s) (! <<v pick-23s 'o count-occs empty-table 'o string->list s '$)]))
+   [(s) (! <<v pick-23s % vo count-occs empty-table % vo string->list s % v$)]))
 (define-thunk (! main2-1)
   (do [ls <- (! slurp-lines!)]
-      [cts <- (! <<n add-23s 'o cl-map calc-23s 'o colist<-list ls '$)]
+      [cts <- (! <<n add-23s % no cl-map calc-23s % no colist<-list ls % n$)]
     (! apply * cts)))
 ;(! main2-1)
 
@@ -85,7 +85,7 @@
 
 ;; Listof A -> Listof A -> Nat
 (define-thunk (! compare-words xs ys)
-  (! <<v apply + 'o zipwith nat-equal? xs ys '$))
+  (! <<v apply + % vo zipwith nat-equal? xs ys % v$))
 
 ;; find-match : (List Char) -> List (List Char) -> #f or (List (List Char) (List Char))
 (define-rec-thunk (! find-match cand seen)
@@ -95,7 +95,7 @@
      (do [hd <- (! car seen)]
          [seen <- (! cdr seen)]
        (cond
-         [(! <<v equal? 1 'o compare-words cand hd '$)
+         [(! <<v equal? 1 % vo compare-words cand hd % v$)
           (ret (list cand hd))]
          [#:else
           (! find-match cand seen)]))]))
@@ -113,12 +113,12 @@
 (define-thunk (! main2-2)
   (do [ls <- (! slurp-lines!)]
       [matches <-
-       (! <<n search '() 'o cl-map string->list 'o colist<-list ls '$)]
+       (! <<n search '() % no cl-map string->list % no colist<-list ls % n$)]
     (! <<v
-       list->string 'o
-       map first 'o
-       filter (thunk (! apply equal?)) 'o
-       apply (thunk (! zipwith List)) matches '$)))
+       list->string % vo
+       map first % vo
+       filter (thunk (! apply equal?)) % vo
+       apply (thunk (! zipwith List)) matches % v$)))
 
 ;; (! main2-2)
 

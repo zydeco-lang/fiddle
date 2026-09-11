@@ -26,13 +26,13 @@
 ;; ! ** xss yss = [ xs ++ ys | xs <- xss, ys <- yss ]
 ;; U(CoList String) -> U(CoList String) -> CoList String
 (def-thunk (! **2 xss yss)
-  (! <<n cl-map string-append 'o cartesian-product xss yss))
+  (! <<n cl-map string-append % no cartesian-product xss yss))
 ;; CoList String
 (def-thunk (! **0) (! cl-single ""))
 
 ;; U(CoList String) -> ... -> CoList String
 (def/copat (! ** (rest args))
-  (! <<n cl-foldr **2 **0 'o colist<-list args))
+  (! <<n cl-foldr **2 **0 % no colist<-list args))
 
 (def-thunk (! ten1)
   (! colist<-list '("one" "two" "three" "four" "five" "six" "seven" "eight" "nine")))

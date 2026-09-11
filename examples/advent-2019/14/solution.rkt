@@ -71,10 +71,10 @@
 (def-thunk (! parse-ctx chems k)
   (! parse-num*chemical (~ (copat
   [(num chem (= #\,) (= #\space))
-   [chems <- (! <<v swap Cons chems 'o List num chem '$)]
+   [chems <- (! <<v swap Cons chems % vo List num chem % v$)]
    (! parse-ctx chems k)]
   [(num chem (= #\space) (= #\=) (= #\>) (= #\space))
-   [chems <- (! <<v swap Cons chems 'o List num chem '$)]
+   [chems <- (! <<v swap Cons chems % vo List num chem % v$)]
    (! k chems)]
   [() (! displayall 'parse-error)]))))
 
@@ -88,9 +88,9 @@
 ;; F (Listof Sequent)
 (def-thunk (! parse-generators file)
   (! <<n
-     list<-colist 'o
-     cl-map (~ (! <<v apply parse-sequent 'o string->list)) 'o
-     slurp-lines~ file '$))
+     list<-colist % no
+     cl-map (~ (! <<v apply parse-sequent % vo string->list)) % no
+     slurp-lines~ file % n$))
 
 ;; STEP 2: sorting
 
@@ -98,12 +98,12 @@
 ;; 1. Antecedents->Succedents
 ;; 2. Succedents->Antecedents
 
-(def-thunk (! adjoin xs ys) (! <<v set->list 'o list->set 'o append xs ys '$))
+(def-thunk (! adjoin xs ys) (! <<v set->list % vo list->set % vo append xs ys % v$))
 
 ;; List (Ante->Succs) (Succ->Antes) -> Sequent -> List (Ante->Succs) (Succ->Antes)
 (def-thunk (! summarize-generator tbls seq)
   [ante->succs <- (! first tbls)] [succ->antes <- (! second tbls)]
-  [antes <- (! <<v map second 'o sequent-ctx seq '$)] [succ <- (! sequent-outp seq)]
+  [antes <- (! <<v map second % vo sequent-ctx seq % v$)] [succ <- (! sequent-outp seq)]
   [succ->antes <- (! update succ->antes succ antes (~ (! adjoin antes)))]
   [ante->succs
    <- (! cl-foldl^ (~ (λ (ante->succs ante)
@@ -117,8 +117,8 @@
 ;; Listof Sequent -> F (List (Table Chem (Listof Chem)) (Table Chem (Listof Chem)))
 (def-thunk (! summarize-generators gens)
   (! <<n
-     cl-foldl^ summarize-generator (cons empty-table (cons empty-table '())) 'o
-     colist<-list gens '$)
+     cl-foldl^ summarize-generator (cons empty-table (cons empty-table '())) % no
+     colist<-list gens % n$)
   )
 
 ;; Then use Kahn's algo to sort the chemicals
@@ -131,9 +131,9 @@
          [remove-dependency = (~ (λ (acc succ) (do
           [frontier <- (! car acc)]
           [succ->antes <- (! cdr acc)]
-          [remove-next = (~ (! filter (~ (! <<v not 'o equal? next))))]
+          [remove-next = (~ (! filter (~ (! <<v not % vo equal? next))))]
           [succ->antes <- (! update succ->antes succ '() remove-next)]
-          [frontier <- (ifc (! <<v empty? 'o succ->antes 'get succ '(0))
+          [frontier <- (ifc (! <<v empty? % vo succ->antes 'get succ '(0))
                             (! Cons succ frontier)
                             (ret frontier))]
           (! Cons frontier succ->antes))))]
@@ -153,12 +153,12 @@
 
 ;; tbl-ctx
 (def-thunk (! biggest-user seq priority)
-  [antes <- (! <<v set<-list 'o map first 'o @> 'to-list 'o sequent-ctx seq '$)]
+  [antes <- (! <<v set<-list % vo map first % vo @> 'to-list % vo sequent-ctx seq % v$)]
   (! first-such-that (~ (! antes 'member?)) (~ (! colist<-list priority))))
 
 (def-thunk (! find-generator gens chem)
   (! first-such-that
-     (~ (! <<v equal? chem 'o sequent-outp))
+     (~ (! <<v equal? chem % vo sequent-outp))
      (~ (! colist<-list gens))))
 
 (def-thunk (! ceil-quotient num denom)
@@ -184,8 +184,8 @@
   [num-inputs-needed <- (! ceil-quotient inp-size ->b-outp-size)]
 
   [other-b->c-inputs <- (! b->c-ctx 'remove reagant)]
-  [num*n = (~ (λ (num chem) (! <<v swap List chem 'o * num-inputs-needed num '$)))]
-  [->b-ctx <- (! <<v map (~ (! apply num*n)) 'o sequent-ctx ->b)]
+  [num*n = (~ (λ (num chem) (! <<v swap List chem % vo * num-inputs-needed num % v$)))]
+  [->b-ctx <- (! <<v map (~ (! apply num*n)) % vo sequent-ctx ->b)]
   [new-ctx <- (! add-to-tbl-ctx ->b-ctx other-b->c-inputs)]
   
   [num <- (! sequent-num b->c)]
@@ -195,8 +195,8 @@
 
 (def-thunk (! only-uses-ore? hash-seq)
   [ctx <- (! sequent-ctx hash-seq)]
-  (! and (~ (! <<v ctx 'has-key? "ORE" '$))
-         (~ (! <<v = 1 'o length 'o ctx 'to-list '$))))
+  (! and (~ (! <<v ctx 'has-key? "ORE" % v$))
+         (~ (! <<v = 1 % vo length % vo ctx 'to-list % v$))))
 
 (def-thunk (! get-to-ore ->fuel gens priority)
   (cond [(! only-uses-ore? ->fuel) (ret ->fuel)]
@@ -217,13 +217,13 @@
 (def-thunk (! ore->fuel n gens priority)
   [t <- (! empty-table 'set "FUEL" n)]
   [fuel-> <- (! mk-sequent t 1 "")]
-  (! <<v cdr 'o first 'o @> 'to-list 'o sequent-ctx 'o get-to-ore fuel-> gens priority))
+  (! <<v cdr % vo first % vo @> 'to-list % vo sequent-ctx % vo get-to-ore fuel-> gens priority))
 
 (def/copat (! main-a)
   [(#:bind) (! main-a "/dev/stdin")]
   [(f)
    [gens <- (! parse-generators f)]
-   [priority <- (! <<v apply topo-sort 'o summarize-generators gens)]
+   [priority <- (! <<v apply topo-sort % vo summarize-generators gens)]
    (! ore->fuel 1 gens priority)])
 
 (define TRILLION 1000000000000)
@@ -233,10 +233,10 @@
 ;;   f hi > goal
 ;; if hi = lo + 1, done
 (def-thunk (! bin-search f lo hi)
-  (cond [(! <<v = hi 'o + 1 lo)
+  (cond [(! <<v = hi % vo + 1 lo)
          (ret lo)]
         [else
-         [mid <- (! <<v swap quotient 2 'o + lo hi)]
+         [mid <- (! <<v swap quotient 2 % vo + lo hi)]
          [mid-y <- (! f mid)]
          (cond [(! <= mid-y TRILLION) (! bin-search f mid hi)]
                [else (! bin-search f lo mid)])]))
@@ -245,5 +245,5 @@
   [(#:bind) (! main-a "/dev/stdin")]
   [(f)
    [gens <- (! parse-generators f)]
-   [priority <- (! <<v apply topo-sort 'o summarize-generators gens)]
+   [priority <- (! <<v apply topo-sort % vo summarize-generators gens)]
    (! bin-search (~ (λ (n) (! ore->fuel n gens priority))) 1 TRILLION)])
