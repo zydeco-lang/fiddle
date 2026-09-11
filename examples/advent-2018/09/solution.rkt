@@ -24,7 +24,7 @@
     (! flex 'get cursor)]
    [((= 'remove-current-value))
     ;(! displayln 'remove-current-value)
-    [flex <- (! <<v second 'o flex 'remove cursor)]
+    [flex <- (! <<v second % vo flex 'remove cursor)]
     [size <- (! - size 1)]
     [cursor <- (! modulo cursor size)]
     (ret (~ (! zippy-circle flex size cursor)))]
@@ -37,7 +37,7 @@
        [size <- (! + size 1)]
        (ret (~ (! zippy-circle flex size cursor)))])]
    [((= 'move) n) ;(! displayln 'move)
-    [cursor <- (! <<v swap modulo size 'o + cursor n)]
+    [cursor <- (! <<v swap modulo size % vo + cursor n)]
     (ret (~ (! zippy-circle flex size cursor)))]))
 
 (def-thunk (! single-circle x)
@@ -51,13 +51,13 @@
 (define NUM-MARBLES-B 7217000) ;; ~4.5 min to run
 
 (def-thunk (! next-player cur-player)
-  (! <<v swap modulo NUM-PLAYERS 'o + 1 cur-player))
+  (! <<v swap modulo NUM-PLAYERS % vo + 1 cur-player))
 (def-thunk (! operate circle scores cur-player turns)
   [turns-v <- (! turns)]
   (cond [(! clv-nil? turns-v) (! cl-nil)]
         [else
          [marble <- (! clv-hd turns-v)] [turns <- (! clv-tl turns-v)]
-         (cond [(! <<v equal? 0 'o modulo marble 23)
+         (cond [(! <<v equal? 0 % vo modulo marble 23)
                 ;(! displayln marble)
                 [circle <- (! circle 'move -7)]
                 [marble2 <- (! circle 'current-value)]
@@ -74,7 +74,7 @@
                 (! operate circle scores cur-player turns)])]))
 
 (def-thunk (! display-fv fv)
-  [l <- (! <<n list<-colist 'o fv 'to-colist)]
+  [l <- (! <<n list<-colist % no fv 'to-colist)]
   (! displayln l))
 
 (def-thunk (! move-right l r n)
@@ -101,7 +101,7 @@
     [st <-
         (cond [(! < n 0)
                [n <- (! - n)]
-               (! <<v reverse 'o move-right r (cons x l) n)]
+               (! <<v reverse % vo move-right r (cons x l) n)]
               [else
                (! move-right l (cons x r) n)])]
     (ret (~ (! apply simple-circle st)))]))
@@ -109,11 +109,11 @@
 (def-thunk (! mutable-flexvec v)
   (copat
    [((= 'update) ix up #:bind)
-    (! <<v vector-set! v ix 'o up 'o vector-ref v ix)
+    (! <<v vector-set! v ix % vo up % vo vector-ref v ix)
     (ret (~ (! mutable-flexvec v)))]
    [((= 'to-colist) #:bind)
     [len <- (! vector-length v)]
-    (! <<n cl-map (~ (! vector-ref v)) 'o range 0 len)]))
+    (! <<n cl-map (~ (! vector-ref v)) % no range 0 len)]))
 
 (def-thunk (! mutable-flexvec<-list l #:bind)
   [v <- (! list->vector l)]
@@ -122,13 +122,13 @@
 (def-thunk (! main num-marbles)
   ;; [circle = (~ (! single-circle 0))]
   [circle = (~ (! simple-circle '() 0 '()))]
-  [zeros <- (! <<n list<-colist 'o take NUM-PLAYERS 'o stream-const 0)]
+  [zeros <- (! <<n list<-colist % no take NUM-PLAYERS % no stream-const 0)]
   [init-scores <- (! mutable-flexvec<-list zeros)]
-  [final-scores <- (! <<n cl-last 'o
-                     operate circle init-scores 0 'o
+  [final-scores <- (! <<n cl-last % no
+                     operate circle init-scores 0 % no
                      range 1 num-marbles)]
   [max-monoid <- (! minimum-monoid >= -inf.0)]
-  (! <<n monoid-cl-foldl max-monoid 'o final-scores 'to-colist))
+  (! <<n monoid-cl-foldl max-monoid % no final-scores 'to-colist))
 
 (def-thunk (! main-a) (! main NUM-MARBLES-A))
 (def-thunk (! main-b) (! main NUM-MARBLES-B))

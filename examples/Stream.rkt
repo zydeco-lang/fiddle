@@ -59,9 +59,9 @@
 
 (define-rec-thunk (! stream<-colist c)
   (copat
-   [((= 'hd)) (! <<v car 'o c)]
+   [((= 'hd)) (! <<v car % vo c)]
    [((= 'tl))
-    (do [tl <- (! <<v cdr 'o c)] (ret (thunk (! stream<-list tl))))]))
+    (do [tl <- (! <<v cdr % vo c)] (ret (thunk (! stream<-list tl))))]))
 
 ; Nat -> U Stream A -> CoList A
 (define-rec-thunk (! take n s)

@@ -8,7 +8,7 @@
 ;; data Elt A where
 ;;   (Elt A)
 (def-thunk (! mk-elt x) (! List 'elt x))
-(def-thunk (! elt? x) (! and (~ (! cons? x)) (~ (! <<v equal? 'elt 'o first x))))
+(def-thunk (! elt? x) (! and (~ (! cons? x)) (~ (! <<v equal? 'elt % vo first x))))
 (def-thunk (! elt-val x) (! second x))
 
 ;; data Node A where
@@ -17,29 +17,29 @@
 (def-thunk (! node-size x) (! second x))
 (def-thunk (! node? x)
   (! and (~ (! cons? x))
-     (~ (! or (~ (! <<v equal? 'two   'o first x))
-           (~ (! <<v equal? 'three 'o first x))))))
-(def-thunk (! list<-node x) (! <<v cdr 'o cdr x))
+     (~ (! or (~ (! <<v equal? 'two   % vo first x))
+           (~ (! <<v equal? 'three % vo first x))))))
+(def-thunk (! list<-node x) (! <<v cdr % vo cdr x))
 
 (def-thunk (! ft-single-val x) (! second x))
 (def-thunk (! ft-mt? x) (! <<v equal? 'empty x))
 (def-thunk (! ft-single? x)
-  (! and (~ (! cons? x)) (~ (! <<v equal? 'single 'o first x))))
+  (! and (~ (! cons? x)) (~ (! <<v equal? 'single % vo first x))))
 (def-thunk (! ft-deep? x)
-  (! and (~ (! cons? x)) (~ (! <<v equal? 'deep 'o first x))))
+  (! and (~ (! cons? x)) (~ (! <<v equal? 'deep % vo first x))))
 (def-thunk (! deep-size x) (! second x))
 (def-thunk (! size x)
   (cond [(! elt? x) (ret 1)]
         [(! node? x) (! node-size x)]
         [(! ft-mt? x) (ret 0)]
-        [(! ft-single? x) (! <<v size 'o ft-single-val x)]
+        [(! ft-single? x) (! <<v size % vo ft-single-val x)]
         [(! ft-deep?   x) (! deep-size x)]
         [else (! error x)]))
 
 (def/copat (! mk-node)
-  [(x y z) [sz <- (! <<v foldl^ + 0 'o map size (list x y z))]
+  [(x y z) [sz <- (! <<v foldl^ + 0 % vo map size (list x y z))]
    (ret (list 'three sz x y z))]
-  [(x y) [sz <- (! <<v foldl^ + 0 'o map size (list x y))]
+  [(x y) [sz <- (! <<v foldl^ + 0 % vo map size (list x y))]
          (ret (list 'two sz x y))])
 
 ;; data FingerTree A where
@@ -53,8 +53,8 @@
   ;; (! displayln lefts)
   ;; (! displayln middles)
   ;; (! displayln rights)
-  [lsz <- (! <<v apply + 'o map size lefts)]
-  [rsz <- (! <<v apply + 'o map size rights)]
+  [lsz <- (! <<v apply + % vo map size lefts)]
+  [rsz <- (! <<v apply + % vo map size rights)]
   [msz <- (! size middles)]
   [sz <- (! + lsz msz rsz)]
   (ret (list 'deep sz lefts middles rights)))
@@ -74,7 +74,7 @@
 ;; operations we actually need: insertAt, deleteAt, get
 ;;   to implement these we need to implement split and append, and cons and snoc
 
-(def-thunk (! full? l) (! <<v equal? 4 'o length l))
+(def-thunk (! full? l) (! <<v equal? 4 % vo length l))
 (def-thunk (! ft-cons x t)
   (cond [(! ft-mt? t) (! mk-single x)]
         [(! ft-single? t)
@@ -86,7 +86,7 @@
          [rights <- (! deep-rights t)]
          (cond [(! full? lefts) ;; lefts has 4 elements
                 [y <- (! first lefts)]
-                [node <- (! <<v apply mk-node 'o rest lefts)]
+                [node <- (! <<v apply mk-node % vo rest lefts)]
                 [middles <- (! ft-cons node middles)]
                 (! mk-deep (list x y) middles rights)]
                [else
@@ -101,12 +101,12 @@
          [middles <- (! deep-middles t)]
          [rights <- (! deep-rights t)]
          (cond [(! full? rights)
-                [x <- (! <<v first 'o reverse rights)]
-                [node <- (! <<v apply mk-node 'o reverse 'o rest 'o reverse rights)]
+                [x <- (! <<v first % vo reverse rights)]
+                [node <- (! <<v apply mk-node % vo reverse % vo rest % vo reverse rights)]
                 [middles <- (! ft-snoc middles node)]
                 (! mk-deep lefts middles (list x y))]
                [else
-                [rights <- (! <<v reverse 'o Cons y 'o reverse rights)]
+                [rights <- (! <<v reverse % vo Cons y % vo reverse rights)]
                 (! mk-deep lefts middles rights)])]))
 #;
 (do [e1 <- (! mk-elt 'x)]
@@ -141,8 +141,8 @@
 
 ;; A -> A -> ... -> Listof (Node A)
 (def/copat (! mk-nodes)
-  [(a b #:bind) (! <<v List 'o mk-node a b)]
-  [(a b c #:bind) (! <<v List 'o mk-node a b c)]
+  [(a b #:bind) (! <<v List % vo mk-node a b)]
+  [(a b c #:bind) (! <<v List % vo mk-node a b c)]
   [(a b c d #:bind)
    [n1 <- (! mk-node a b)] [n2 <- (! mk-node c d)]
    (! List n1 n2)]
@@ -156,15 +156,15 @@
         [(! ft-mt? fr) (! multi-snoc fl xs)]
         [(! ft-single? fl)
          [xl <- (! ft-single-val fl)]
-         (! <<v ft-cons xl 'o multi-cons xs fr)]
+         (! <<v ft-cons xl % vo multi-cons xs fr)]
         [(! ft-single? fr)
          [xr <- (! ft-single-val fr)]
-         (! <<v swap ft-snoc xr 'o swap multi-snoc xs fl)]
+         (! <<v swap ft-snoc xr % vo swap multi-snoc xs fl)]
         [else ;; here
          [ll <- (! deep-lefts fl)] [ml <- (! deep-middles fl)] [rl <- (! deep-rights fl)]
          [lr <- (! deep-lefts fr)] [mr <- (! deep-middles fr)] [rr <- (! deep-rights fr)]
          (! <<v append rl xs lr)
-         [nodes <- (! <<v apply mk-nodes 'o append rl xs lr)]
+         [nodes <- (! <<v apply mk-nodes % vo append rl xs lr)]
          [mm <- (! app3 ml nodes mr)]
          (! mk-deep ll mm rr)])
   )
@@ -193,7 +193,7 @@
         [(! <= hd-sz ix)
          ;(! displayln 'sndcase)
          ;(! displayln tl)
-         [unzipped <- (! <<v unsafe-unzip-at-list tl 'o - ix hd-sz)]
+         [unzipped <- (! <<v unsafe-unzip-at-list tl % vo - ix hd-sz)]
          [left <- (! first unzipped)] [middle <- (! second unzipped)] [right <- (! third unzipped)]
          ;(! displayln 'didiimakeit)
          (! List (cons hd left) middle right)]))
@@ -219,7 +219,7 @@
                [(! empty? small)
                 [view <- (! view-l m)]
                 (cond [(! empty? view) (! fingertree<-list r)]
-                      [else [l <- (! <<v list<-node 'o first view)]
+                      [else [l <- (! <<v list<-node % vo first view)]
                             [m-rest <- (! second view)]
                             (! mk-deep l m-rest r)])]
                [else (! mk-deep small m r)])))])
@@ -237,8 +237,8 @@
                    [(! ft-single? t) [x <- (! ft-single-val t)] (! List empty x)]
                    [else
                     [l <- (! deep-lefts t)] [m <- (! deep-middles t)] [r <- (! deep-rights t)]
-                    [x <- (! <<v car 'o reverse r)]
-                    [small <- (! <<v reverse 'o cdr 'o reverse r)]
+                    [x <- (! <<v car % vo reverse r)]
+                    [small <- (! <<v reverse % vo cdr % vo reverse r)]
                     [rest <- (! mk-deep-r l m small)]
                     (! List rest x)]))))]
        [mk-deep-r
@@ -249,7 +249,7 @@
                  [view <- (! view-r m)]
                  ;(! displayall 'view-r-return view)
                  (cond [(! empty? view) (! fingertree<-list l)]
-                       [else [m-rest <- (! first view)] [r <- (! <<v list<-node 'o second view)]
+                       [else [m-rest <- (! first view)] [r <- (! <<v list<-node % vo second view)]
                              (! mk-deep l m-rest r)])]
                 [else (! mk-deep l m small)]))))])
     (! mk-deep-r)))
@@ -267,7 +267,7 @@
     [else ;; deep
      [sz <- (! deep-size t)]
      [l <- (! deep-lefts t)] [m <- (! deep-middles t)] [r <- (! deep-rights t)]
-     [lsize <- (! <<v apply + 'o map size l)]
+     [lsize <- (! <<v apply + % vo map size l)]
      [msize <- (! size m)]
      (cond
        [(! < ix lsize);; it's in l
@@ -277,7 +277,7 @@
         [ll <- (! fingertree<-list ll-list)]
         [rr <- (! mk-deep-l rl-list m r)]
         (! List ll x rr)]
-       [(! <<v < ix 'o + lsize msize) ;; it's in m
+       [(! <<v < ix % vo + lsize msize) ;; it's in m
         ;(! displayln 'looking-at-the-middle)
         ;(! displayln r)
         ;(! displayln ix)
@@ -285,7 +285,7 @@
         ;; find the Node that contains it in the deep tree
         [unzipped <- (! unsafe-unzip-at m ix)]
         [lm-tree <- (! first unzipped)] [x-node <- (! second unzipped)] [rm-tree <- (! third unzipped)]
-        [ix <- (! <<v - ix 'o size lm-tree)]
+        [ix <- (! <<v - ix % vo size lm-tree)]
         [x-list <- (! list<-node x-node)]
         [unzipped <- (! unsafe-unzip-at-list x-list ix)]
         [x-nodel <- (! first unzipped)] [x <- (! second unzipped)] [x-noder <- (! third unzipped)]
@@ -340,26 +340,26 @@
 (def-thunk (! flexvec<-fingertree tree)
   (copat
    [((= 'debug)) (ret tree)]
-   [((= 'get) ix) (! <<v elt-val 'o get tree ix)]
+   [((= 'get) ix) (! <<v elt-val % vo get tree ix)]
    [((= 'remove) ix)
     [x*tree <- (! delete-at tree ix)]
-    [x <- (! <<v elt-val 'o first x*tree)]
+    [x <- (! <<v elt-val % vo first x*tree)]
     [tree <- (! second x*tree)]
     (! List x (~ (! flexvec<-fingertree tree)))]
    [((= 'cons) x)
-    [tree <- (! <<v swap ft-cons tree 'o mk-elt x)]
+    [tree <- (! <<v swap ft-cons tree % vo mk-elt x)]
     (ret (~ (! flexvec<-fingertree tree)))]
    [((= 'insert) ix x)
     [x-elt <- (! mk-elt x)]
     [tree <- (! insert-at tree ix x-elt)]
     (ret (~ (! flexvec<-fingertree tree)))]
    [((= 'update) ix up)
-    [up = (~ (! <<v mk-elt 'o up 'o elt-val))]
+    [up = (~ (! <<v mk-elt % vo up % vo elt-val))]
     ;(! displayall 'update tree ix)
     [tree <- (! update-at tree ix up)]
     (ret (~ (! flexvec<-fingertree tree)))]
    [((= 'to-colist))
-    (! <<n cl-map elt-val 'o colist<-fingertree tree)]))
+    (! <<n cl-map elt-val % no colist<-fingertree tree)]))
 
 (def-thunk (! mt-flexvec) (! flexvec<-fingertree empty))
 (def-thunk (! flexvec<-list xs)
