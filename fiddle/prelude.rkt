@@ -552,139 +552,265 @@
   ;; (should add/todo) upto tests, more rest tests
   (ret 'stdlib-tests-all-pass))
 
+;; ---------------------------------------------------------------------
+;; Copattern matching, compiled at expansion time.
+;;
+;; `copat` is a compiler: each clause's pattern list is turned directly
+;; into nested typed primitives (copat-arg / copat-bind / copat-method /
+;; ^% / ifc / do / let) with the backtracking continuation threaded
+;; statically — the same thing `case-λ` and `λ` do in fiddle.rkt, one
+;; level up. Nothing about patterns exists at runtime; the only runtime
+;; helpers are the unknown-length scans `up-to-lit`, `up-to-method`,
+;; `up-to-multi` and `dot-args`.
+;;
+;; Semantics are those of the old runtime matcher (`copat-match`):
+;;   * clauses are tried in order; a failed clause restores everything
+;;     it consumed (re-pushes popped args, re-invokes popped method
+;;     frames, re-pushes what an `upto` scan consumed) and the next
+;;     clause sees the original stack;
+;;   * value sub-expressions in (= e), (% m ...), (upto xs e) are
+;;     evaluated once at clause entry, in the scope OUTSIDE the clause's
+;;     pattern variables (so [(x (= x)) ...] compares against the outer x);
+;;   * (rest xs) grabs all remaining pushed args and must be last;
+;;   * #:bind matches only the empty stack and must be last.
+;;
+;; Cost: one abort thunk per consumed stack element per attempted clause,
+;; and none when nothing after that element can fail; one thunk per
+;; attempted clause for the fall-through. Value patterns (cons/list/
+;; literals) allocate nothing.
+
 (begin-for-syntax
-  ;; Each pattern (`.pattern` attribute) is now a Fiddle *computation*
-  ;; returning a pat / copat-syn value. The `copat` class threads them
-  ;; together via `do` so the enclosing list can hold plain values.
-  (define-syntax-class meth-args-pat
-    #:attributes (pattern all-vars)
+  ;; Bind a restoring abort thunk around the remainder only if the
+  ;; remainder can fail; otherwise hand the remainder #f (never used).
+  ;;   restore : syntax of a computation that undoes this step's consumption
+  ;;   k       : (or/c id #f) -> syntax   compiles the remainder
+  (define (with-abort fallible? restore k)
+    (if fallible?
+        (with-syntax ([(a) (generate-temporaries '(abort))])
+          #`(let ([a (~ #,restore)]) #,(k #'a)))
+        (k #f)))
+
+  ;; ---- value patterns ---------------------------------------------
+  ;; match : (v:id succ:stx fail:stx) -> stx
+  ;;   `fail` never pops anything, so it is spliced at each failure
+  ;;   point; it is always a single small call.
+  ;; hoist : (listof (list tmp:id expr:stx)) evaluated at clause entry.
+  (define-syntax-class vpat
+    #:attributes (match hoist)
     (pattern x:id
-     #:attr pattern #`(ret 'var)
-     #:attr all-vars #'(x))
-    (pattern (p:pat ...)
-     #:with (v ...) (generate-temporaries #'(p ...))
-     #:attr pattern #`(do [v <- p.pattern] ... (! list-pat (list v ...)))
-     #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
-    )
+      #:attr hoist '()
+      #:attr match (λ (v succ fail) #`(let ([x #,v]) #,succ)))
+    (pattern ((~literal =) e:expr)
+      #:with (t) (generate-temporaries '(lit))
+      #:attr hoist (list (list #'t #'e))
+      #:attr match (λ (v succ fail) #`(ifc (! equal? t #,v) #,succ #,fail)))
+    (pattern ((~literal quote) e)
+      #:attr hoist '()
+      #:attr match (λ (v succ fail) #`(ifc (! equal? (quote e) #,v) #,succ #,fail)))
+    (pattern (~or e:boolean e:char e:number e:string)
+      #:attr hoist '()
+      #:attr match (λ (v succ fail) #`(ifc (! equal? e #,v) #,succ #,fail)))
+    (pattern ((~literal cons) p:vpat q:vpat)
+      #:with (va vd) (generate-temporaries '(car cdr))
+      #:attr hoist (append (attribute p.hoist) (attribute q.hoist))
+      #:attr match
+      (λ (v succ fail)
+        #`(ifc (! cons? #,v)
+               (do [va <- (! car #,v)]
+                   [vd <- (! cdr #,v)]
+                 #,((attribute p.match) #'va
+                    ((attribute q.match) #'vd succ fail)
+                    fail))
+               #,fail)))
+    ;; (list p ...) is nested cons ending in '(), exactly as the old
+    ;; simplify-list-pat did at runtime.
+    (pattern ((~literal list) p ...)
+      #:with d:vpat (foldr (λ (p acc) #`(cons #,p #,acc)) #''() (syntax->list #'(p ...)))
+      #:attr hoist (attribute d.hoist)
+      #:attr match (attribute d.match)))
 
+  ;; ---- stack patterns ---------------------------------------------
+  ;; step : (abort:id  k:((or/c id #f) -> stx)  fallible?:bool) -> stx
+  ;;   `abort` restores everything consumed BEFORE this step; the step
+  ;;   must extend it with its own restoration before handing an abort
+  ;;   to `k`. `fallible?` says whether the remainder can fail at all.
+  ;; hoist : as for vpat.
   (define-syntax-class pat
-    #:attributes (pattern all-vars)
-    (pattern
-     x:id
-     #:attr pattern #`(ret 'var)
-     #:attr all-vars #'(x))
+    #:attributes (step hoist)
+    ;; (rest xs) — terminal (enforced by compile-copat); never fails.
+    (pattern ((~literal rest) xs:id)
+      #:attr hoist '()
+      #:attr step (λ (a k f?) #`(! dot-args (~ (λ (xs) #,(k #f))))))
 
-    (pattern
-     ((~literal =) e:expr)
-     #:attr pattern #`(! lit-pat e)
-     #:attr all-vars #'())
+    ;; (upto xs (% m)) — grab args up to method m's frame. As in the old
+    ;; matcher the frame is re-installed so the remainder / body see it.
+    ;; The loop's abort a1 restores frame + consumed args; if the
+    ;; remainder fails it will have re-installed the frame itself, so its
+    ;; abort pops that frame and then calls a1 (no double frame).
+    (pattern ((~literal upto) xs:id ((~literal %) m:expr))
+      #:with (t a1 margs) (generate-temporaries '(meth abort margs))
+      #:attr hoist (list (list #'t #'m))
+      #:attr step
+      (λ (a k f?)
+        #`(! up-to-method
+             (~ (λ (a1 xs margs)
+                  #,(with-abort f?
+                      #`(copat-method [(% (t _)) (! a1)] [() (! a1)])
+                      (λ (a2) #`(! apply (~ (^% #,(k a2) t)) margs)))))
+             #,a t '())))
+    ;; (upto xs (% m margs)) — as above but the frame is consumed and
+    ;; its arg list bound to margs.
+    (pattern ((~literal upto) xs:id ((~literal %) m:expr margs:id))
+      #:with (t a1) (generate-temporaries '(meth abort))
+      #:attr hoist (list (list #'t #'m))
+      #:attr step
+      (λ (a k f?)
+        #`(! up-to-method (~ (λ (a1 xs margs) #,(k #'a1))) #,a t '())))
+    ;; (upto xs (% m (p ...))) — frame consumed, its arg list matched
+    ;; against the list pattern. a1 already restores frame + args.
+    (pattern ((~literal upto) xs:id ((~literal %) m:expr (p ...)))
+      #:with (t a1 margs) (generate-temporaries '(meth abort margs))
+      #:with lp:vpat #'(list p ...)
+      #:attr hoist (cons (list #'t #'m) (attribute lp.hoist))
+      #:attr step
+      (λ (a k f?)
+        #`(! up-to-method
+             (~ (λ (a1 xs margs)
+                  #,((attribute lp.match) #'margs (k #'a1) #'(! a1))))
+             #,a t '())))
+    ;; (upto xs #:sigil s lit ... [#:bind]) — single scan for any of
+    ;; several literal sigils; s binds the one found (or '#:bind).
+    (pattern ((~literal upto) xs:id (~datum #:sigil) s:id lit:expr ...
+                              (~optional (~and end-marker (~datum #:bind))))
+      #:with end-flag (if (attribute end-marker) #'#t #'#f)
+      #:with (t a1) (generate-temporaries '(sigils abort))
+      #:attr hoist (list (list #'t #'(list lit ...)))
+      #:attr step
+      (λ (a k f?)
+        #`(! up-to-multi (~ (λ (a1 xs s) #,(k #'a1))) #,a t end-flag '())))
+    ;; (upto xs e) — grab args up to a literal sigil.
+    (pattern ((~literal upto) xs:id e:expr)
+      #:with (t a1) (generate-temporaries '(sigil abort))
+      #:attr hoist (list (list #'t #'e))
+      #:attr step
+      (λ (a k f?)
+        #`(! up-to-lit (~ (λ (a1 xs) #,(k #'a1))) #,a t '())))
 
-    (pattern
-     ((~literal upto) xs:id ((~literal %) v))
-     #:attr pattern #`(do [s <- (! method-only v)] (! upto-syn s))
-     #:attr all-vars #'(xs))
-    (pattern
-     ((~literal upto) xs:id ((~literal %) v m:meth-args-pat))
-     #:attr pattern #`(do [mp <- m.pattern]
-                          [s  <- (! method-pat v mp)]
-                          (! upto-syn s))
-     #:attr all-vars #`#,(cons #`xs
-                               (syntax-e #`m.all-vars)))
+    ;; (% m x) — method frame on top; x binds its arg list.
+    (pattern ((~literal %) m:expr x:id)
+      #:with (t) (generate-temporaries '(meth))
+      #:attr hoist (list (list #'t #'m))
+      #:attr step
+      (λ (a k f?)
+        #`(copat-method
+           [(% (t x)) #,(with-abort f? #`(! apply (~ (! #,a % t)) x) k)]
+           [() (! #,a)])))
+    ;; (% m (p ...)) — method frame on top; its arg list matched
+    ;; against the list pattern.
+    (pattern ((~literal %) m:expr (p ...))
+      #:with (t margs) (generate-temporaries '(meth margs))
+      #:with lp:vpat #'(list p ...)
+      #:attr hoist (cons (list #'t #'m) (attribute lp.hoist))
+      #:attr step
+      (λ (a k f?)
+        #`(copat-method
+           [(% (t margs))
+            #,((attribute lp.match) #'margs
+               (with-abort f? #`(! apply (~ (! #,a % t)) margs) k)
+               #`(! apply (~ (! #,a % t)) margs))]
+           [() (! #,a)])))
 
-    ;; multi-sigil upto:
-    ;;   (upto xs #:sigil s lit ... [#:bind])
-    ;; xs binds to args before the terminator; s binds to the found
-    ;; sigil value (or the keyword #:bind for end-of-stack, if allowed).
-    (pattern
-     ((~literal upto) xs:id
-                      (~datum #:sigil) s:id
-                      lit:expr ...
-                      (~optional (~and end-marker (~datum #:bind))))
-     #:with end-flag (if (attribute end-marker) #'#t #'#f)
-     #:attr pattern #`(! upto-multi-syn (list lit ...) end-flag)
-     #:attr all-vars #'(xs s))
+    ;; bare variable — the common case; bind directly.
+    (pattern x:id
+      #:attr hoist '()
+      #:attr step
+      (λ (a k f?)
+        #`(copat-arg [(x) #,(with-abort f? #`(! #,a x) k)]
+                     [() (! #,a)])))
+    ;; any other value pattern at a stack position: pop, then match the
+    ;; value; failure (and the remainder's abort) re-push the ORIGINAL.
+    (pattern p:vpat
+      #:with (v) (generate-temporaries '(arg))
+      #:attr hoist (attribute p.hoist)
+      #:attr step
+      (λ (a k f?)
+        #`(copat-arg
+           [(v) #,((attribute p.match) #'v
+                   (with-abort f? #`(! #,a v) k)
+                   #`(! #,a v))]
+           [() (! #,a)]))))
 
-    (pattern
-     ((~literal upto) xs:id e:expr)
-     #:attr pattern #`(do [s <- (! lit-pat e)] (! upto-syn s))
-     #:attr all-vars #'(xs))
+  (define (rest-pat? p)
+    (syntax-parse p [((~literal rest) _:id) #t] [_ #f]))
 
-    (pattern
-     (k:keyword p:pat)
-     #:attr pattern #`(do [pp <- p.pattern] (! kw-syn (quote k) pp))
-     #:attr all-vars #`#,(syntax-e #`p.all-vars))
-    (pattern
-     ((~literal rest) xs:id)
-     #:attr pattern #`(ret 'rest)
-     #:attr all-vars #'(xs))
-    (pattern
-     ((~literal cons) car:pat cdr:pat)
-     #:attr pattern #`(do [cp  <- car.pattern]
-                          [cdp <- cdr.pattern]
-                          (! cons-pat cp cdp))
-     #:attr all-vars #`#,(append (syntax-e #`car.all-vars)
-                                 (syntax-e #`cdr.all-vars)))
-    (pattern
-     ((~literal list) p:pat ...)
-     #:with (v ...) (generate-temporaries #'(p ...))
-     #:attr pattern #`(do [v <- p.pattern] ...
-                          (! list-pat (list v ...)))
-     #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
+  ;; Can anything in the remainder fail? Only an empty remainder without
+  ;; #:bind, or a lone (rest xs), cannot.
+  (define (tail-fallible? pats bind?)
+    (cond [(null? pats) bind?]
+          [(rest-pat? (car pats)) #f]
+          [else #t]))
 
-    (pattern
-     ((~literal quote) e)
-     #:attr pattern #`(! lit-pat (quote e))
-     #:attr all-vars #'())
+  (define (compile-copat steps pats bind? body abort)
+    (cond
+      [(null? steps)
+       (if bind?
+           #`(copat-bind [(#:bind) #,body] [() (! #,abort)])
+           body)]
+      [(rest-pat? (car pats))
+       (unless (and (null? (cdr pats)) (not bind?))
+         (raise-syntax-error 'copat
+                             "(rest xs) must be the last pattern in a clause"
+                             (car pats)))
+       ((car steps) abort (λ (_) body) #f)]
+      [else
+       ((car steps) abort
+                    (λ (abort^) (compile-copat (cdr steps) (cdr pats) bind? body abort^))
+                    (tail-fallible? (cdr pats) bind?))]))
 
-    (pattern
-     ((~literal @) e:expr x:id)
-     #:attr pattern #`(ret (list 'tagged e 'var))
-     #:attr all-vars #'(x))
+  ;; Wrap the compiled clause in a `let` of its hoisted value
+  ;; sub-expressions so they are evaluated once, outside the pattern vars.
+  (define (compile-clause steps hoists pats bind? body abort)
+    (define hs (apply append hoists))
+    (define compiled (compile-copat steps pats bind? body abort))
+    (if (null? hs)
+        compiled
+        #`(let (#,@(for/list ([h (in-list hs)]) #`[#,(car h) #,(cadr h)]))
+            #,compiled)))
 
-    ;; tagged destructure
-
-    (pattern
-     ((~literal %) e:expr x:id)
-     #:attr pattern #`(! method-syn e 'var)
-     #:attr all-vars #'(x))
-    (pattern
-     ((~literal %) e:expr (p:pat ...))
-     #:with (v ...) (generate-temporaries #'(p ...))
-     #:attr pattern #`(do [v <- p.pattern] ...
-                          [pp <- (! list-pat (list v ...))]
-                          (! method-syn e pp))
-     #:attr all-vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...))))     )
-
-    (pattern
-     (~or e:boolean e:char e:number e:string)
-     #:attr pattern #`(! lit-pat e)
-     #:attr all-vars #'())
-
-)
   (define-syntax-class copat
-    #:attributes (patterns vars)
-    (pattern
-     (p:pat ...)
-     #:with (v ...) (generate-temporaries #'(p ...))
-     #:attr patterns #`(do [v <- p.pattern] ...
-                           (ret (list v ...)))
-     #:attr vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))
-    (pattern
-     (p:pat ... #:bind)
-     #:with (v ...) (generate-temporaries #'(p ...))
-     #:attr patterns #`(do [v <- p.pattern] ...
-                           (ret (list v ... end-copat)))
-     #:attr vars #`#,(apply append (map syntax-e (syntax-e #`(p.all-vars ...)))))))
+    #:attributes (compile src)
+    (pattern (p:pat ...)
+      #:attr src (syntax->datum #'(p ...))
+      #:attr compile
+      (λ (body abort)
+        (compile-clause (attribute p.step) (attribute p.hoist)
+                        (syntax->list #'(p ...)) #f body abort)))
+    (pattern (p:pat ... #:bind)
+      #:attr src (syntax->datum #'(p ... #:bind))
+      #:attr compile
+      (λ (body abort)
+        (compile-clause (attribute p.step) (attribute p.hoist)
+                        (syntax->list #'(p ...)) #t body abort)))))
 
+;; (copat [(pat ...) body ...] ...)
+;; Clause i's abort is a thunk of clause i+1; the last aborts to an
+;; error that reports the remaining arguments and the source patterns.
 (define-syntax (copat syn)
   (syntax-parse syn
     [(_ [cop:copat e ...] ...)
-     #:with (ps ...) (generate-temporaries #'(cop ...))
-     ;; cop.patterns is a computation returning the pattern list; bind
-     ;; each via `do` before assembling the outer list of (pat, kont) pairs.
-     #`(do [ps <- cop.patterns] ...
-           (! try-copatterns-default-error
-              (list (list ps (thunk (λ cop.vars (do e ...)))) ...)))]))
+     (define default
+       #`(! dot-args
+            (~ (λ (args)
+                 (! error 'copattern-match-error
+                    "Failed to match the arguments ~v\n\tAgainst the copatterns: ~v"
+                    args
+                    (quote #,(datum->syntax syn (attribute cop.src))))))))
+     (foldr (λ (compile body next)
+              (with-syntax ([(a) (generate-temporaries '(abort))])
+                #`(let ([a (~ #,next)]) #,(compile body #'a))))
+            default
+            (attribute cop.compile)
+            (syntax->list #'((do e ...) ...)))]))
 (define-syntax (pat syn)
   (syntax-parse syn
     [(_ v [p:pat k ...] ...)
