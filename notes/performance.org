@@ -1,0 +1,131 @@
+#+TITLE: Fiddle runtime performance notes
+#+DATE: 2026-09-11
+
+Measurements on the Advent-of-Code 2018 day 9 part b "marble" benchmark
+(=examples/advent-2018/09=, 7,217,000 marbles, 470 players), Racket v9.3
+CS, Apple Silicon.  "instr" is instructions retired (=/usr/bin/time -l=),
+which is deterministic to within ~0.5% run to run; user CPU varies with
+machine load by ±20% and is only indicative.
+
+* Where the runtime stands (branch =faster-copat-matcher=)
+
+| implementation                        | style                         |  instr | user CPU |
+|---------------------------------------+-------------------------------+--------+----------|
+| Fiddle =solution.rkt= (=b.rkt=)       | colists, circle object, =<<v= | 70.4 G |    4.1 s |
+| Fiddle =fiddle-nocombinators.rkt=     | same, =<<v=/=<<n= hand-inlined | 53.9 G |    3.7 s |
+| Fiddle =fiddle-direct.rkt=            | plain loop                    | 26.5 G |    1.7 s |
+| Racket =racket-analogous.rkt=         | same structure as solution    | 13.4 G |    0.8 s |
+| Racket =racket-idiomatic.rkt=         | plain loop                    |  8.1 G |    0.45 s |
+
+Fiddle is 3.7x off plain Racket for the same direct loop and 5.2x off
+for the library-heavy version.  On the original interpreter the colist
+version was 4001 G instructions / 256 s.
+
+History of the runtime work (colist version, instructions):
+4001 G original -> 2013 G functional stack -> 918 G struct copat ->
+192 G copat compiled at expansion time -> 97 G stack delimiters (C2) ->
+75 G legacy sigil fallback removed (C4) -> 70 G FFI wrapper inlining.
+
+* What the remaining cost is
+
+Errortrace profiles of both Fiddle versions attribute ~55% of the
+instrumented time to the application form itself (=many-app=: one cons
+per pushed argument plus the force), ~5% to the FFI wrapper, ~4% each to
+=copat-delim=, =^@= append and =apply=, with =ifc='s =bind= frames as the
+caller of most of it.  No prelude function dominates any more.
+
+Micro-benchmark of the inner loop hand-expanded in several calling
+conventions (=/Users/maxsnew/.claude/jobs/.../calling/styles.rkt=, not in
+the repo; numbers are for the loop alone):
+
+| convention                                       | instr  |
+|--------------------------------------------------+--------|
+| direct Racket                                    |  7.0 G |
+| Fiddle today (args consed on =vals=, FFI wrapper) | 18.0 G |
+| + FFI wrapper specialised to the primitive       | 12.7 G |
+| + known-arity direct entry for def-thunks        | 11.1 G |
+| call-site inlining of primitives                 |  9.6 G |
+| call-site inlining + known-arity entries         |  7.7 G |
+
+Consing arguments onto the stack list is only 10-25% of the gap.  The
+one-element argument list and the =bind= around every primitive call are
+the bulk of it, and they are the uniform calling convention itself.
+
+** Done: FFI wrapper inlining (commit c9828e5)
+=fo-rkt->fiddle= is wrapped in =begin-encourage-inline= so that
+=(fo-rkt->fiddle car)= at the definition site becomes a direct call to
+=car=.  Identical instruction counts to a hand-written macro wrapper.
+Worth ~7% on real programs (75.3 G -> 70.4 G), far less than the
+micro-benchmark suggested, because the wrapper is a smaller share of a
+real program's work.
+
+** Rejected: known-arity direct entries for def-thunk
+~10% at best, only for statically known heads with flat argument lists,
+and it introduces a second calling convention that every future
+stack-shaped feature (delimiters, keyword args, batching) must
+accommodate.  Call-site primitive inlining is a larger win for the same
+kind of compile-time machinery, so this would not be the next step
+either way.
+
+** Not done: call-site inlining of primitives
+A syntax property set by =require-fo-wrapped-provide= on the binding and
+read by =many-app=, expanding =(! car r)= to =(car- r-)= when the head is
+literally that binding, the arguments are plain values and the open
+segment is empty, with the generic wrapper as unconditional fallback.
+Judged too brittle for now: two semantics paths for one form.
+
+* Significant win available: a =<<v= / =<<n= elimination pass
+
+Hand-rewriting every composition in =solution.rkt= into the binds an
+optimisation pass would emit, and nothing else, took the colist version
+from 70.4 G to 53.9 G instructions (-23%), 4.6 s -> 3.7 s.  For example
+
+#+begin_src racket
+(! <<v equal? 0 % vo modulo marble 23)
+;; =>
+[m <- (! modulo marble 23)] (! equal? 0 m)
+
+(! <<n cl-last % no operate circle scores 0 % no range 1 n)
+;; =>
+(! cl-last (~ (! operate circle scores 0 (~ (! range 1 n)))))
+#+end_src
+
+The pass is purely syntactic: split the argument list of a literal
+=(! <<v f ...)= at the =% vo= / =% v$= delimiters, bind each stage
+right-to-left, and pass the result as the last argument of the stage to
+its left; =<<n= wraps each stage in =~= instead of binding it.  It must
+also apply to library code (=CoList.rkt='s =clv-nil?= is itself a
+composition and runs on every colist step), so it belongs in the
+expander of =!= or as a prelude macro that recognises the literal =<<v=
+head, not in user code.  The runtime =<<v-impl= stays for chains built
+dynamically.
+
+After the pass, the remaining 2x between the colist version (53.9 G) and
+the direct loop (26.5 G) is the program's structure: a =(list 'cons hd tl)=
+plus a thunk per turn from =range=, a thunk per score snapshot, =equal?=
+on a symbol per =nil?= test, and sequential =(= 'sym)= clause dispatch in
+=simple-circle= (a ='move= call fails four =equal?= tests and allocates
+four abort continuations first).  The same costs separate
+=racket-analogous= from =racket-idiomatic=.
+
+* Next candidate: literal dispatch in the copat compiler
+
+When several consecutive clauses start with =(= 'literal)= patterns on
+the same argument, compile them to one =case= (or a chain of =eq?= tests
+with no abort thunks) instead of sequential clauses with a backtracking
+continuation each.  Fixes =simple-circle= and every message-dispatching
+object in the corpus without touching user code.  Not measured yet.
+
+* Measurement notes
+
+- Clear =compiled/= under =fiddle/= and =examples/= after editing any
+  =fiddle/*.rkt=, or =instantiate-linklet: mismatch= follows.
+- =raco profile= names are unreliable for Fiddle code: all thunks share
+  a few macro source locations and get their names from whichever =let=
+  bound them; pervasive tail calls attribute time to the innermost
+  =bind= frame.  Errortrace profiling (=raco profile --use-errortrace=,
+  with =compiled/= cleared so modules are instrumented) attributes
+  correctly but by primitive template site, and it inflates instrumented
+  Fiddle code ~8x relative to uninstrumented Racket primitives.
+- =raco profile --delay 0.001= for enough samples; the default 50 ms
+  gives ~85 samples on a 4 s run.
