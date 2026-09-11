@@ -175,4 +175,36 @@
 (def-thunk (! sum3 a b c #:bind) [s <- (! + a b)] (! + s c))
 (! test-equal! (~ (! sum3 1 2 3)) (~ (ret 6)))
 
+;; ---------------------------------------------------------------------
+;; Segment-structured stack and delimiters
+
+;; case-λ: the delimiter arm binds the delimiter itself (a ctype)
+(! test-equal! (~ ((case-λ [(% d) (ret d)]) % m)) (~ (ret m)))
+;; #:bind and "a delimiter on top" are distinct states
+(! test-equal! (~ ((case-λ [(#:bind) (ret 'b)] [(% d) (ret 'd)]) % m)) (~ (ret 'd)))
+(! test-equal! (~ ((case-λ [(#:bind) (ret 'b)] [(% d) (ret 'd)]))) (~ (ret 'b)))
+;; all three arms, value on top
+(! test-equal! (~ ((case-λ [(x) (ret x)] [(#:bind) (ret 'b)] [(% d) (ret 'd)]) 7)) (~ (ret 7)))
+
+;; (upto xs (% m)) on an empty segment
+(! test-equal! (~ ((copat [((upto xs (% m)) (% m) y) (ret (list xs y))]) % m 3))
+   (~ (ret (list '() 3))))
+;; wrong delimiter: falls through with the stack intact
+(! test-equal! (~ ((copat [((upto xs (% m))) (ret 'bad)] [(r (% m2) z) (ret (list r z))]) 1 % m2 2))
+   (~ (ret (list 1 2))))
+;; nested delimiters, each exposing a one-element segment
+(! test-equal! (~ ((copat [(a (% m) b (% m2) c #:bind) (ret (list a b c))]) 1 % m 2 % m2 3))
+   (~ (ret (list 1 2 3))))
+;; (rest xs) takes the open segment; the delimiter's own segment follows
+(! test-equal! (~ ((copat [((rest xs)) ((copat [((% m) (rest ys)) (ret (list xs ys))]))]) 1 2 % m 3 4))
+   (~ (ret (list (list 1 2) (list 3 4)))))
+;; apply onto a NON-empty segment: pushed values go on top, source order
+(! test-equal! (~ (! apply List (list 1 2) 3)) (~ (ret (list 1 2 3))))
+;; prefix semantics: (% m (a)) binds a and leaves the rest of the segment
+(! test-equal! (~ ((copat [((% m (a)) b #:bind) (ret (list a b))]) % m 1 2)) (~ (ret (list 1 2))))
+;; backtracking that pops a delimiter, then fails on the exposed segment
+(! test-equal! (~ ((copat [((% m) (= 'no)) (ret 'bad)] [((% m) x) (ret x)]) % m 3)) (~ (ret 3)))
+;; a value on top of a delimiter: the value arm fires; the delimiter remains for the body
+(! test-equal! (~ ((copat [(x) ((case-λ [(% d) (ret (list x d))]))]) 5 % m)) (~ (ret (list 5 m))))
+
 (! displayln 'copat-tests-all-pass)

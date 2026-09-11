@@ -7,11 +7,22 @@
 
 (module m fiddle
   (require fiddle/prelude)
-  (provide bad zero-clauses)
+  (provide bad zero-clauses ret1 plus dm)
+  (define! dm (! new-method 'dm))
   (define bad (thunk (copat [((= 1)) (ret 'one)])))
-  (define zero-clauses (thunk (copat))))
+  (define zero-clauses (thunk (copat)))
+  (define ret1 (thunk (ret 1)))
+  (define plus (thunk (! + 1 2))))
 
-(require 'm rackunit)
+(require 'm rackunit (only-in fiddle/initialize frame))
+
+;; returning a value into a delimiter is an error, like ret with args left
+(check-equal? (ret1 '() '()) 1)
+(check-exn #rx"return address" (λ () (ret1 '() (list (frame dm '())))))
+;; a primop is a return too: applying it with a delimiter beneath its
+;; arguments is an error, not silently ignored
+(check-equal? (plus '() '()) 3)
+(check-exn #rx"delimiter on the stack" (λ () (plus '() (list (frame dm '())))))
 
 (check-equal? (bad '(1) '()) 'one)
 (check-exn #rx"copattern-match-error" (λ () (bad '(2) '())))

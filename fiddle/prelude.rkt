@@ -175,44 +175,28 @@
 ;; faster than a user-space rev-loop).
 ; (! reverse (cons 3 (cons 4 (cons 5 null))))
 
-;; stack-loop : forall X. (X -> ?c) -> X -> (U (?v -> X -> F X)) -> ?c
-;; aka stack-foldl
-(define-rec-thunk (! stack-loop k acc cons)
-  (copat-arg
-   [(x)
-    (do [acc^ <- (! cons x acc)]
-        (! stack-loop k acc^ cons))]
-   [() (! k acc)]))
-
-(define-thunk (! grab-rev-stack k)
-  (! stack-loop k '() Cons))
-
-; (! grab-rev-stack pop1 0 1 2 3 4 5)
-
-(define-thunk (! grab-stack k)
-  (! grab-rev-stack
-     (thunk
-      (λ (rev-stack)
-        (do [stack <- (! reverse rev-stack)]
-            (! k stack))))))
-
-; (! grab-stack pop1 0 1 2 3 4 5)
-
-; dot-args : forall Y. (List ?v -> Y) -> Y
-(define dot-args grab-stack)
+;; dot-args : forall Y. (List ?v -> Y) -> Y
+;; Hand the whole open segment (the values pushed since the last
+;; delimiter, in source order) to k as a list. O(1), zero-copy.
+(define-thunk (! dot-args k)
+  (copat-rest [(xs) (! k xs)]))
+(define grab-stack dot-args)
 (define-thunk (! List) (! dot-args pop1))
 
-; rev-apply : U(X -> ... -> ?c) -> List X -> ?c
-(define-rec-thunk (! rev-apply k xs)
-  (ifc (! null? xs)
-       (! k)
-       (do [hd <- (! car xs)]
-           [tl <- (! cdr xs)]
-         (! rev-apply k tl hd))))
+; (! grab-stack pop1 0 1 2 3 4 5)  ; => '(0 1 2 3 4 5)
 
+;; apply : U(X -> ... -> ?c) -> List X -> ?c
+;; Push the elements of xs (source order) and force f. O(1) when the
+;; open segment is empty; otherwise an append.
 (define-thunk (! apply f xs)
+  (^@ (! f) xs))
+
+;; rev-apply : U(X -> ... -> ?c) -> List X -> ?c
+;; Like apply but xs is given innermost-first (the order an accumulator
+;; builds it in). Kept for the legacy sigil scans and exported.
+(define-thunk (! rev-apply k xs)
   (do [sx <- (! reverse xs)]
-      (! rev-apply f sx)))
+      (^@ (! k) sx)))
 
 ;; (define-thunk (! even?)
 ;;   (letrec ([even? (thunk (λ (x)

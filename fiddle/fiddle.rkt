@@ -157,6 +157,7 @@
 (require-fo-wrapped-provide racket/base car)
 (require-fo-wrapped-provide racket/base cdr)
 (require-fo-wrapped-provide racket/base equal?)
+(require-fo-wrapped-provide racket/base eq?)
 (require-fo-wrapped-provide racket/base symbol?)
 
 (require-fo-wrapped-provide racket/base string<=?)
@@ -387,14 +388,23 @@
      ⇒ computation)
   )
 
-(define-typed-syntax (case-λ [(#:bind) e] [(x) ex]) ≫
+;; Total case analysis on the top of the stack. Arms, each optional, in
+;; any order:
+;;   [(x) e]       a value on top of the open segment
+;;   [(#:bind) e]  empty segment and no delimiter: returning to a bind
+;;   [(% d) e]     empty segment, delimiter on top; d is bound to it (a ctype)
+;;                 and its segment becomes the open one
+;; A missing arm falls through to an error.
+(define-typed-syntax case-λ
+  [(_ (~alt (~optional [(x:id) ex])
+            (~optional [(#:bind) eb])
+            (~optional [((~literal %) d:id) ed])) ...) ≫
+   #:with err #'(! error "case-λ: expected an argument, a returning context, or a delimiter on top of the stack")
+   #:with e3 (if (attribute d)  #'(copat-delim [(% d) ed] [() err]) #'err)
+   #:with e2 (if (attribute eb) #'(copat-bind [(#:bind) eb] [() e3]) #'e3)
+   #:with e1 (if (attribute x)  #'(copat-arg [(x) ex] [() e2]) #'e2)
    -----------------------------
-   [≻
-    (copat-arg
-     [(x) ex]
-     [() (copat-bind
-          [(#:bind) e]
-          [() (! error "expected an argument or a returning context, but got some method I've never heard of")])])])
+   [≻ e1]])
 
 ;; (define-typed-syntax (case-λ [(#:bind) e] [(x:id) ex]) ≫
 ;;   (⊢ e ≫ e- ⇐ computation)
