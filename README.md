@@ -40,7 +40,7 @@ The language is implemented as a "#lang" in Racket, using the
 
 # Performance
 
-I've done some optimization but there is still a high amount of overhead from copattern matching and combinators that use copattern matching. This is hopefully mostly just interpretive overhead of the copattern matcher, and a smarter implementation should be a big improvement.
+Copattern matching is compiled at expansion time: the `copat` macro emits nested `copat-arg`/`copat-bind`/`copat-method` primitives directly, with the backtracking continuation threaded statically, rather than building pattern data for a runtime matcher. Together with the functional stack representation this made the Advent-of-Code marble benchmark about 20× faster than the original interpreter. Remaining overhead is mostly Turnstile expansion time and the FFI wrapper on Racket primitives.
 
 # The Name
 
