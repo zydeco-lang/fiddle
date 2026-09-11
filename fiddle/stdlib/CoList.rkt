@@ -38,9 +38,9 @@
 (define clv-nil (list 'nil))
 (def-thunk (! cl-nil) (ret clv-nil))
 (define-thunk (! clv-nil? v)
-  (! <<v equal? 'nil 'o first v '$))
+  (! <<v equal? 'nil % vo first v % v$))
 (define-thunk (! clv-cons? v)
-  (! <<v equal? 'cons 'o first v '$))
+  (! <<v equal? 'cons % vo first v % v$))
 (define clv-hd second)
 (define clv-tl third)
 
@@ -160,7 +160,7 @@
   (copat [(step acc l) (! cl-foldl l step acc)]))
 
 (define-thunk (! list<-colist c)
-  (! <<v reverse 'o cl-foldl c (~ (! swap Cons)) '() '$))
+  (! <<v reverse % vo cl-foldl c (~ (! swap Cons)) '() % v$))
 
 (def-thunk (! cl-foldl1 step l)
   [v <- (! l)]  [hd <- (! clv-hd v)] [tl <- (! clv-tl v)]
@@ -220,7 +220,7 @@
 
 (def/copat (! cl-append*)
   [(#:bind) (ret clv-nil)]
-  [(l) (! <<n cl-append l 'o cl-append*)])
+  [(l) (! <<n cl-append l % no cl-append*)])
 
 ;; cycle
 (def-thunk (! cl-cycle cl)
@@ -292,12 +292,12 @@
                    (cond [(! and (~ (! clv-nil? v)) (~ (! empty? acc)))
                           (! cl-nil)]
                          [(! clv-nil? v)
-                          (! <<v swap cl-cons cl-nil 'o reverse acc)]
+                          (! <<v swap cl-cons cl-nil % vo reverse acc)]
                          [else
                           [hd <- (! clv-hd v)] [tl <- (! clv-tl v)]
                           (cond
                             [(! sep? hd)
-                             (! <<v swap cl-cons (~ (! loop '() tl)) 'o reverse acc)]
+                             (! <<v swap cl-cons (~ (! loop '() tl)) % vo reverse acc)]
                             [else (! loop (cons hd acc) tl)])])]))])
     (! loop '() c)))
 
@@ -449,7 +449,7 @@
               (! Cons cur (~ (! f cur))))))
      (~ (ret seed))))
 
-(def-thunk (! member? x cl) (! <<n any? 'o cl-map (~ (! equal? x)) cl))
+(def-thunk (! member? x cl) (! <<n any? % no cl-map (~ (! equal? x)) cl))
 
 (def-thunk (! tails l)
   [unwrap = (~ (copat

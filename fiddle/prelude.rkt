@@ -13,7 +13,7 @@
 
          even? odd?
          ;; "Calling conventions: call-by-value, call-by-name, and method style"
-         <<v <<n oo idiom idiom^
+         <<v <<n vo no idiom idiom^
 
          CBV v> v$
          CBN n> n$
@@ -571,9 +571,33 @@
 
 (define-thunk (! Thunk x) (ret (~ (ret x))))
 
-;; Single-pass upto scan: match either 'o (compose) or '$ / end-of-stack
-;; (done). `s` binds to the found sigil (or the keyword #:bind for end).
-(define-rec-thunk (! <<v-impl k)
+;; Composition operators over STACK DELIMITERS.
+;;
+;;   (! <<v f a b % vo g c % v$)   ; call-by-value composition: f a b (g c)
+;;   (! <<n k f a % no g c % n$)   ; call-by-name: stages passed as thunks
+;;
+;; Each stage's arguments are exactly the values between two delimiters,
+;; so a stage is `(rest xs)` — O(1), no scan, no reverse. The chain ends
+;; at the end delimiter, at end-of-stack (#:bind — the caller's remaining
+;; arguments then land in the final stage), or at any foreign delimiter,
+;; which is left in place for the final callee.
+;; NB: typed definitions are type-checked eagerly in module pass 1, so
+;; these must precede every definition that mentions them. v$ / n$ are
+;; also the end markers of the CBV / CBN combinators further down.
+(define! vo (! new-method 'cbv-o))
+(define! v$ (! new-method 'cbv-end))
+(define! no (! new-method 'cbn-o))
+(define! n$ (! new-method 'cbn-end))
+
+;; ---- legacy sigil-based implementations ---------------------------
+;; Kept temporarily as a fallback while the corpus migrates from the
+;; symbol sigils 'o / '$ to % vo / % v$. Reached only when a chain ends
+;; (bind or foreign delimiter) and the final stage still contains a
+;; sigil. To be deleted once the migration is complete.
+(define-thunk (! legacy-sigils? xs)
+  (! or (~ (! member 'o xs)) (~ (! member '$ xs))))
+
+(define-rec-thunk (! <<v-impl/sigil k)
   (copat
    [(f (upto xs #:sigil s 'o '$ #:bind))
     (cond
@@ -581,22 +605,65 @@
        (let ([k (thunk (λ (y)
                          (do [z <- (! apply f xs y)]
                              (! k z))))])
-         (! <<v-impl k))]
+         (! <<v-impl/sigil k))]
       [#:else
        (do [z <- (! apply f xs)]
            (! k z))])]))
 
-(define-thunk (! <<v) (! <<v-impl Ret))
-
-(define-rec-thunk (! <<n-impl)
+(define-rec-thunk (! <<n-impl/sigil)
   (copat
    [(k f (upto xs #:sigil s 'o '$ #:bind))
     (cond
       [(! equal? s 'o)
        (let ([k (thunk (copat [(y) (! k (thunk (! apply f xs y)))]))])
-         (! <<n-impl k))]
+         (! <<n-impl/sigil k))]
       [#:else
        (! k (thunk (! apply f xs)))])]))
+
+;; ---- delimiter-based implementations ------------------------------
+(define-rec-thunk (! <<v-impl k)
+  (copat
+   [(f (rest xs))
+    (copat-delim
+     [(% d)
+      (cond
+        [(! eq? d vo)
+         (! <<v-impl (~ (λ (y) (do [z <- (! apply f xs y)] (! k z)))))]
+        [(! eq? d v$)
+         (do [z <- (! apply f xs)] (! k z))]
+        [#:else
+         ;; foreign delimiter: re-install it, then terminate the chain
+         (ifc (! legacy-sigils? xs)
+              (! apply (~ (! <<v-impl/sigil k f)) xs % d)
+              (do [z <- (! apply f xs % d)] (! k z)))])]
+     [()
+      ;; end of stack: the caller's remaining args are the last stage's
+      (ifc (! legacy-sigils? xs)
+           (! apply (~ (! <<v-impl/sigil k f)) xs)
+           (do [z <- (! apply f xs)] (! k z)))])]
+   [() (! error "<<v: expected a function")]))
+
+(define-thunk (! <<v) (! <<v-impl Ret))
+
+(define-rec-thunk (! <<n-impl)
+  (copat
+   [(k f (rest xs))
+    (copat-delim
+     [(% d)
+      (cond
+        [(! eq? d no)
+         (! <<n-impl (~ (copat [(y) (! k (~ (! apply f xs y)))])))]
+        [(! eq? d n$)
+         (! k (~ (! apply f xs)))]
+        [#:else
+         (ifc (! legacy-sigils? xs)
+              (! apply (~ (! <<n-impl/sigil k f)) xs % d)
+              (! k (~ (! apply f xs)) % d))])]
+     [()
+      (ifc (! legacy-sigils? xs)
+           (! apply (~ (! <<n-impl/sigil k f)) xs)
+           (! k (~ (! apply f xs))))])]
+   [() (! error "<<n: expected a continuation and a function")]))
 (define-thunk (! <<n) (! <<n-impl $))
 
 (define-thunk (! beep) (ret "beep"))
@@ -648,7 +715,7 @@
     [(! empty? xs) (ret '())]
     [#:else
      (do [x <- (! car xs)]
-         [xs <- (! <<v filter p 'o cdr xs '$)]
+         [xs <- (! <<v filter p % vo cdr xs % v$)]
        (ifc (! p x)
             (ret (cons x xs))
             (ret xs)))]))
@@ -657,13 +724,10 @@
   [(x #:bind) (! displayln x) (ret x)]
   [(x) (! displayln x) (! debug)])
 
-(def/copat (! oo)
-  [(f (upto xs '@)) [g <- (! apply f xs)] (! oo g)]
-  [(f) (! f)])
 (def-thunk (! @> x f) (! f x))
 (def-thunk (! @>> xs f) (! apply f xs))
 (def-thunk (! foldl^ step acc l) (! foldl l step acc))
-(def-thunk (! foldr l step acc) (! <<v foldl^ (~ (! swap step)) acc 'o reverse l))
+(def-thunk (! foldr l step acc) (! <<v foldl^ (~ (! swap step)) acc % vo reverse l))
 (def-thunk (! foldr^ step acc l) (! foldr l step acc))
 
 ;; Debugging primitives
@@ -715,7 +779,7 @@
          (! apply/vector-loop k v next-ix elt)]))
 
 (def-thunk (! apply/vector k v)
-  [last-ix <- (! <<v swap - 1 'o vector-length v)]
+  [last-ix <- (! <<v swap - 1 % vo vector-length v)]
   (! apply/vector-loop k v last-ix)
   )
 
@@ -735,7 +799,7 @@
 ;; Nominal combinators
 
 (define! v> (! new-method 'cbv-compose))
-(define! v$ (! new-method 'cbv-end))
+;; v$ is defined with the <<v delimiters above.
 (def-thunk (! CBV> t u)
   [x <- (! t)]
   (! u x))
@@ -745,7 +809,7 @@
   [() (! error "CBV composition: expected either another thunk or an end of args method, but got:")])
 
 (define! n> (! new-method 'cbn-compose))
-(define! n$ (! new-method 'cbn-end))
+;; n$ is defined with the <<n delimiters above.
 (def/copat (! CBN t)
   [((% n> (u))) (! CBN (~ (! u t)))]
   [((% n$ ()))  (! t)]
