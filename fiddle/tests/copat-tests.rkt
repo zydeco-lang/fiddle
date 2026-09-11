@@ -5,8 +5,9 @@
 ;; so a nonzero exit means failure. One top-level expression per test so
 ;; every test runs even if an earlier one fails to typecheck cleanly.
 ;;
-;; These pin down the semantics of the runtime interpreter (copat-match) so
-;; the expansion-time compiler can be checked against the same behavior.
+;; These pin down the semantics of copattern matching (originally those of
+;; the runtime interpreter, now the expansion-time compiler) and of the
+;; segment-structured stack with delimiters.
 
 (require fiddle/prelude)
 
@@ -206,5 +207,31 @@
 (! test-equal! (~ ((copat [((% m) (= 'no)) (ret 'bad)] [((% m) x) (ret x)]) % m 3)) (~ (ret 3)))
 ;; a value on top of a delimiter: the value arm fires; the delimiter remains for the body
 (! test-equal! (~ ((copat [(x) ((case-λ [(% d) (ret (list x d))]))]) 5 % m)) (~ (ret (list 5 m))))
+
+;; ---------------------------------------------------------------------
+;; Composition operators <<v / <<n over the delimiters vo/v$ and no/n$
+
+;; compose-then-end: + 1 (* 2 3)
+(! test-equal! (~ (! <<v + 1 % vo * 2 3 % v$)) (~ (ret 7)))
+;; tail form: the chain ends at #:bind, the caller's args land in the last stage
+(! test-equal! (~ (! (~ (! <<v + 1 % vo *)) 2 3)) (~ (ret 7)))
+;; 0-stage: just a call
+(! test-equal! (~ (! <<v equal? 'empty 'empty)) (~ (ret #t)))
+;; a nested composition inside a stage: + 1 (* 2 (+ 1 2))
+(! test-equal! (~ (! <<v + 1 % vo (~ (λ (x) (! <<v * 2 % vo + 1 x % v$))) 2 % v$)) (~ (ret 7)))
+;; 11-stage chain, tail form
+(! test-equal! (~ (! <<v + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 % vo + 1 0))
+   (~ (ret 11)))
+;; a foreign delimiter ends the chain: the final stage sees only its own
+;; arguments, and the delimiter (with the segment beneath it) is left on
+;; the stack for the continuation — for <<n that is the head thunk
+(! test-equal! (~ (! <<n (~ (copat [(th (% m) c) (do [v <- (! th)] (ret (list v c)))]))
+                     % no + 1 1 % m 3))
+   (~ (ret (list 2 3))))
+;; <<n: stages are passed as thunks, so an erroring stage that is never forced is harmless
+(! test-equal! (~ (! <<n (~ (λ (th) (ret 'lazy))) % no error "never forced" % n$)) (~ (ret 'lazy)))
+(! test-equal! (~ (! <<n (~ (λ (th) (! th))) % no + 1 2 % n$)) (~ (ret 3)))
+;; <<n tail form
+(! test-equal! (~ (! (~ (! <<n (~ (λ (th) (! th))) % no +)) 1 2)) (~ (ret 3)))
 
 (! displayln 'copat-tests-all-pass)

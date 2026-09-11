@@ -6,21 +6,25 @@
 
 ;; - Values are elaborated to pure Racket terms that return a value.
 
-;; - Computations are elaborated to Racket terms that have access to a
-;;   variable holding the stack (which is bound as current-stack).
+;; - Computations are elaborated to Racket terms that have access to
+;;   two lexically bound variables holding the stack: `current-vals`
+;;   (the open segment) and `current-frames` (the delimiters beneath it).
 
 ;;   Every stack conceptually ends with a continuation, which is just
 ;;   implemented as the ambient Racket continuation for the term.
 
-;;   Thunking creates a procedure that explicitly takes the stack as an argument, and forcing passes the current stack to the procedure.
+;;   Thunking creates a two-argument procedure over (vals frames), and forcing passes the current stack to the procedure.
 
 ;;   Returning returns a value to the ambient continuation but only if the stack is empty. Bind executes the computation with an empty stack but continues with its result and the old stack. Conceptually this is creating a continuation that captures the current stack.
 
-;;   Application is just pushing a value onto the current stack, and case-λ pattern matches on the stack to check if there are any arguments left.
+;;   Application is just pushing a value onto the current segment, and case-λ pattern matches on the stack: a value on top, an empty stack (returning to a bind), or a delimiter on top.
+;;
+;;   A stack delimiter `% m` (a nominal method) closes the current segment: the values pushed since the last delimiter become the "arguments of m", and a fresh empty segment is opened above it. Popping the delimiter (copat-delim / copat-method) exposes that segment again.
 
-;; A stack is a list of Methods where each element is one of
-;; - a plain value (an argument pushed on)
-;; - a `method` struct (a nominal method frame with its args and remaining tail)
+;; Concretely the stack is
+;; - current-vals   : (listof value)        the open segment, top first
+;; - current-frames : (listof frame)        each `(frame name vals)` is a delimiter with the segment beneath it
+;; frames = '() means the computation is returning to a bind.
 ;;
 
 ;; If we add something like opaque stack types, we would probably need

@@ -16,12 +16,22 @@ include symbols, boolean values, strings, ..., as well as immutable
 cons pairs and "thunked" computations. Computations are effectful
 programs that interact with the stack. The current stack is always
 either an opaque continuation waiting for the computation to `ret` a
-value to it, or is a value pushed onto a larger stack. The basic
-primitive for interacting with the stack is `case-lambda` which
-co-pattern matches on the stack to see if there are any arguments
-left. This stack-manipulation provides a slightly lower level
-interface for implementing variable-arity functions than typical
+value to it, a value pushed onto a larger stack, or a *stack
+delimiter* (a nominal method, written `% m` in an application) on top
+of a larger stack. The basic primitive for interacting with the stack
+is `case-lambda` which co-pattern matches on the stack to see which of
+the three it is. This stack-manipulation provides a slightly lower
+level interface for implementing variable-arity functions than typical
 Schemes do.
+
+Delimiters group arguments: in `(! f a b % m c d)` the values between
+two delimiters (or between a delimiter and the end of the call) form a
+*segment*, and the runtime keeps the stack as a list of segments, so
+taking "all the arguments up to the next delimiter" (`(rest xs)`,
+`(upto xs (% m))`, `apply`) is O(1). The prelude's composition
+operators `<<v`/`<<n` use the delimiters `% vo`/`% v$` and
+`% no`/`% n$`: `(! <<v f a % vo g b % v$)` runs `(g b)` and passes the
+result as `f`'s last argument.
 
 The language is implemented as a "#lang" in Racket, using the
 [turnstile][turnstile] library.
@@ -40,7 +50,7 @@ The language is implemented as a "#lang" in Racket, using the
 
 # Performance
 
-Copattern matching is compiled at expansion time: the `copat` macro emits nested `copat-arg`/`copat-bind`/`copat-method` primitives directly, with the backtracking continuation threaded statically, rather than building pattern data for a runtime matcher. Together with the functional stack representation this made the Advent-of-Code marble benchmark about 20× faster than the original interpreter. Remaining overhead is mostly Turnstile expansion time and the FFI wrapper on Racket primitives.
+Copattern matching is compiled at expansion time: the `copat` macro emits nested `copat-arg`/`copat-bind`/`copat-method` primitives directly, with the backtracking continuation threaded statically, rather than building pattern data for a runtime matcher. Together with the functional, segment-structured stack representation (stack delimiters are a primitive, so composition operators no longer scan for sigils) this made the Advent-of-Code marble benchmark about 40× faster than the original interpreter. Remaining overhead is mostly Turnstile expansion time and the FFI wrapper on Racket primitives.
 
 # The Name
 

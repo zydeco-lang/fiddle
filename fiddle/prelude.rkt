@@ -193,7 +193,7 @@
 
 ;; rev-apply : U(X -> ... -> ?c) -> List X -> ?c
 ;; Like apply but xs is given innermost-first (the order an accumulator
-;; builds it in). Kept for the legacy sigil scans and exported.
+;; builds it in). Used by the `upto` literal-sigil scans and exported.
 (define-thunk (! rev-apply k xs)
   (do [sx <- (! reverse xs)]
       (^@ (! k) sx)))
@@ -281,13 +281,14 @@
 ;;
 ;; `copat` is a compiler: each clause's pattern list is turned directly
 ;; into nested typed primitives (copat-arg / copat-bind / copat-method /
-;; ^% / ifc / do / let) with the backtracking continuation threaded
+;; copat-delim / copat-rest / ^ / ^% / ^@ / ifc / do / let) with the backtracking continuation threaded
 ;; statically — the same thing `case-λ` and `λ` do in fiddle.rkt, one
 ;; level up. Nothing about patterns exists at runtime; the only runtime
-;; helpers are the unknown-length scans `up-to-lit`, `up-to-method`,
-;; `up-to-multi` and `dot-args`.
+;; helpers are the literal-sigil scans `up-to-lit` and `up-to-multi`
+;; (for `(upto xs e)` / `(upto xs #:sigil ...)`); delimiter patterns
+;; `(% m ...)`, `(upto xs (% m))` and `(rest xs)` are O(1) primitives.
 ;;
-;; Semantics are those of the old runtime matcher (`copat-match`):
+;; Semantics:
 ;;   * clauses are tried in order; a failed clause restores everything
 ;;     it consumed (re-pushes popped args, re-invokes popped method
 ;;     frames, re-pushes what an `upto` scan consumed) and the next
@@ -589,38 +590,6 @@
 (define! no (! new-method 'cbn-o))
 (define! n$ (! new-method 'cbn-end))
 
-;; ---- legacy sigil-based implementations ---------------------------
-;; Kept temporarily as a fallback while the corpus migrates from the
-;; symbol sigils 'o / '$ to % vo / % v$. Reached only when a chain ends
-;; (bind or foreign delimiter) and the final stage still contains a
-;; sigil. To be deleted once the migration is complete.
-(define-thunk (! legacy-sigils? xs)
-  (! or (~ (! member 'o xs)) (~ (! member '$ xs))))
-
-(define-rec-thunk (! <<v-impl/sigil k)
-  (copat
-   [(f (upto xs #:sigil s 'o '$ #:bind))
-    (cond
-      [(! equal? s 'o)
-       (let ([k (thunk (λ (y)
-                         (do [z <- (! apply f xs y)]
-                             (! k z))))])
-         (! <<v-impl/sigil k))]
-      [#:else
-       (do [z <- (! apply f xs)]
-           (! k z))])]))
-
-(define-rec-thunk (! <<n-impl/sigil)
-  (copat
-   [(k f (upto xs #:sigil s 'o '$ #:bind))
-    (cond
-      [(! equal? s 'o)
-       (let ([k (thunk (copat [(y) (! k (thunk (! apply f xs y)))]))])
-         (! <<n-impl/sigil k))]
-      [#:else
-       (! k (thunk (! apply f xs)))])]))
-
-;; ---- delimiter-based implementations ------------------------------
 (define-rec-thunk (! <<v-impl k)
   (copat
    [(f (rest xs))
@@ -631,16 +600,11 @@
          (! <<v-impl (~ (λ (y) (do [z <- (! apply f xs y)] (! k z)))))]
         [(! eq? d v$)
          (do [z <- (! apply f xs)] (! k z))]
-        [#:else
-         ;; foreign delimiter: re-install it, then terminate the chain
-         (ifc (! legacy-sigils? xs)
-              (! apply (~ (! <<v-impl/sigil k f)) xs % d)
-              (do [z <- (! apply f xs % d)] (! k z)))])]
-     [()
-      ;; end of stack: the caller's remaining args are the last stage's
-      (ifc (! legacy-sigils? xs)
-           (! apply (~ (! <<v-impl/sigil k f)) xs)
-           (do [z <- (! apply f xs)] (! k z)))])]
+        ;; foreign delimiter: terminates the chain; the final stage sees
+        ;; only its own arguments and the delimiter is re-installed for k
+        [#:else (do [z <- (! apply f xs)] (! k z % d))])]
+     ;; end of stack: the caller's remaining args are the last stage's
+     [() (do [z <- (! apply f xs)] (! k z))])]
    [() (! error "<<v: expected a function")]))
 
 (define-thunk (! <<v) (! <<v-impl Ret))
@@ -655,14 +619,9 @@
          (! <<n-impl (~ (copat [(y) (! k (~ (! apply f xs y)))])))]
         [(! eq? d n$)
          (! k (~ (! apply f xs)))]
-        [#:else
-         (ifc (! legacy-sigils? xs)
-              (! apply (~ (! <<n-impl/sigil k f)) xs % d)
-              (! k (~ (! apply f xs)) % d))])]
-     [()
-      (ifc (! legacy-sigils? xs)
-           (! apply (~ (! <<n-impl/sigil k f)) xs)
-           (! k (~ (! apply f xs))))])]
+        ;; foreign delimiter: ends the chain, stays on the stack for k
+        [#:else (! k (~ (! apply f xs)) % d)])]
+     [() (! k (~ (! apply f xs)))])]
    [() (! error "<<n: expected a continuation and a function")]))
 (define-thunk (! <<n) (! <<n-impl $))
 
@@ -670,7 +629,7 @@
 (define-thunk (! fc)
   (copat
    [(th) (! th)]))
-;(! <<n fc 'o beep '$)
+;(! <<n fc % no beep % n$)
 
 
 (define-rec-thunk (! foldl l step acc)
@@ -690,14 +649,14 @@
 (define-thunk (! foldl1^ step xs) (! foldl1 xs step))
 
 ;; (define-rec-thunk (! map f l)
-;;   (! <<v reverse 'o
+;;   (! <<v reverse % vo
 ;;      foldl l
 ;;      (thunk
 ;;       (copat
 ;;        [(acc x)
 ;;         (do [y <- (! f x)]
 ;;             (ret (cons y acc)))]))
-;;      '() '$))
+;;      '() % v$))
 
 (define-syntax (def/copat syn)
   (syntax-parse syn
