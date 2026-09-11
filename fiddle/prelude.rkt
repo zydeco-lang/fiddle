@@ -309,7 +309,8 @@
    [(x)
     (ifc (! equal? x lit)
          (do [seen~ <- (! reverse seen)]
-             [abort-k <- (ret (thunk (! rev-apply abort-k seen)))]
+             ;; restore the sigil too (it was popped by copat-arg above)
+             [abort-k <- (ret (thunk (! rev-apply abort-k (cons x seen))))]
              (! match-k abort-k seen~))
          (! up-to-lit match-k abort-k lit (cons x seen)))]
    [() (! rev-apply abort-k seen)]))
