@@ -27,7 +27,7 @@
 ;; nu c. forall y. U(v -> y) -> U(? -> U(? -> c) -> y) -> y
 ;; And this is the representation we use.
 
-(define! eff (! new-method 'eff 2))
+(define! eff (! new-method 'eff))
 
 
 (def/copat (! retE)

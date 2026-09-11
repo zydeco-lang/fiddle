@@ -28,16 +28,16 @@
 ;;   #addl Expr  : Evaluator
 ;;   #addr Value : Evaluator
 ;;   #:bind      : F Int
-(define! addl (! new-method 'addl 1))
-(define! addr (! new-method 'addr 1))
+(define! addl (! new-method 'addl))
+(define! addr (! new-method 'addr))
 
 ;; run : Expr -> Evaluator (Chu?)
 
 ;; object Interpreter where
 ;;   #expr : Expr -> Evaluator
 ;;   #valu : Value -> Evaluator
-(define! iexpr (! new-method 'expr 1))
-(define! ivalu (! new-method 'value 1))
+(define! iexpr (! new-method 'expr))
+(define! ivalu (! new-method 'value))
 
 (def/copat (! run)
   [((% iexpr ((list 'lit n)))) (! run % ivalu n)]

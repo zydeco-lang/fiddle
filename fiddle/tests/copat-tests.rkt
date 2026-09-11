@@ -10,8 +10,8 @@
 
 (require fiddle/prelude)
 
-(define! m  (! new-method 'm 1))
-(define! m2 (! new-method 'm2 2))
+(define! m  (! new-method 'm))
+(define! m2 (! new-method 'm2))
 
 ;; ---------------------------------------------------------------------
 ;; Basics (revived from the old #; block in prelude.rkt)
@@ -138,9 +138,9 @@
                           [((% m (y)) (rest r)) (ret (list y r))])
                    % m 3 'yes))
    (~ (ret (list 3 (list 'yes)))))
-(! test-equal! (~ ((copat [((% m x)) (ret x)]) % m 3)) (~ (ret (list 3))))
+(! test-equal! (~ ((copat [((% m) (rest x)) (ret x)]) % m 3)) (~ (ret (list 3))))
 ;; method pattern fails on the args, falls through
-(! test-equal! (~ ((copat [((% m ((= 'nope)))) (ret 'bad)] [((% m x)) (ret x)]) % m 3))
+(! test-equal! (~ ((copat [((% m ((= 'nope)))) (ret 'bad)] [((% m) (rest x)) (ret x)]) % m 3))
    (~ (ret (list 3))))
 
 ;; 11. upto (% m (y)) — grabs args up to the frame, matches the frame's args

@@ -30,30 +30,46 @@
 ;; performance downside?
 
 (require racket/stxparam
-         (only-in racket/unsafe/ops unsafe-struct-ref)
          "initialize.rkt"
          (for-syntax syntax/parse))
 (provide (all-defined-out)
          (rename-out (many-app #%app))
-         matches-method? matches-tag?
-         invoke-method)
+         matches-tag?)
 
 (define-base-type value)
 (define-base-type computation)
 
-(define-syntax-parameter current-stack
+;; The stack is two lexically bound values (see initialize.rkt):
+;;   current-vals   — the open segment: values pushed since the last delimiter
+;;   current-frames — the delimiters beneath it, each with its own segment
+(define-syntax-parameter current-vals
   (λ (stx)
-    (raise-syntax-error 'current-stack "used outside with-stack / thunk-λ" stx)))
+    (raise-syntax-error 'current-vals "used outside with-stack / with-vals / thunk-λ" stx)))
+(define-syntax-parameter current-frames
+  (λ (stx)
+    (raise-syntax-error 'current-frames "used outside with-stack / thunk-λ" stx)))
 
-;; Run body with `current-stack` rebound to new-stack.
-(define-syntax-rule (with-stack new-stack body ...)
-  (let- ([stk new-stack])
-    (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
+;; Run body with both halves of the stack rebound. The new-* expressions
+;; are evaluated in the OUTER binding (plain let), so they may mention
+;; current-vals / current-frames to mean the old values.
+(define-syntax-rule (with-stack new-vals new-frames body ...)
+  (let- ([vs new-vals] [fs new-frames])
+    (syntax-parameterize ([current-vals   (make-rename-transformer #'vs)]
+                          [current-frames (make-rename-transformer #'fs)])
       body ...)))
 
+;; Run body with only the open segment rebound (the common case).
+(define-syntax-rule (with-vals new-vals body ...)
+  (let- ([vs new-vals])
+    (syntax-parameterize ([current-vals (make-rename-transformer #'vs)])
+      body ...)))
+
+;; The one place a computation becomes a closure: a 2-argument procedure
+;; over (vals frames).
 (define-syntax-rule (thunk-λ body ...)
-  (lambda (stk)
-    (syntax-parameterize ([current-stack (make-rename-transformer #'stk)])
+  (lambda (vs fs)
+    (syntax-parameterize ([current-vals   (make-rename-transformer #'vs)]
+                          [current-frames (make-rename-transformer #'fs)])
       body ...)))
 
 (define-syntax (require-wrapped-provide stx)
@@ -102,7 +118,14 @@
     [(_ lib x)
      ]))
 
-(require-fo-wrapped-provide racket/base error)
+;; `error` is wrapped WITHOUT the delimiter check: it runs on failure
+;; paths exactly when a delimiter is on top, and its message must not be
+;; masked by the "primitive applied with a delimiter" error.
+(begin-
+  (require (only-in racket/base [error error-rkt]))
+  (define error-wrapped (fo-nocheck-rkt->fiddle error-rkt))
+  (define-primop error error-wrapped : value)
+  (provide error))
 (require-fo-wrapped-provide "initialize.rkt" new-method)
 (require-fo-wrapped-provide "initialize.rkt" new-tag)
 (require-fo-wrapped-provide "initialize.rkt" Tag)
@@ -231,17 +254,18 @@
   (⊢ e ≫ e- ⇐ value)
   ----------------
   (⊢
-   (if- (null?- current-stack)
+   (if- (and- (null?- current-vals) (null?- current-frames))
         e-
-        (error- (format "expected a return address on the stack but got stack ~a" current-stack)))
+        (error- (format "expected a return address on the stack but got ~a"
+                        (cons- current-vals current-frames))))
    ⇒ computation))
 
 (define-typed-syntax (bind (x:id e) e^) ≫
   (⊢ e ≫ e- ⇐ computation)
   ((x ≫ x- : value) ⊢ e^ ≫ e^- ⇐ computation)
   -----------------
-  (⊢ (let- ([x- (with-stack '() e-)])  ;; run e against an empty stack
-       e^-)                            ;; run e^ against the ambient stack
+  (⊢ (let- ([x- (with-stack '() '() e-)])  ;; run e against an empty stack
+       e^-)                                ;; run e^ against the ambient stack
      ⇒ computation))
 
 (define-typed-syntax (let ([x e] ...) e^) ≫
@@ -275,7 +299,7 @@
   (⊢ e ≫ e- ⇐ value)
   ----------------
   ;; force = apply the thunk to the current stack
-  (⊢ (e- current-stack) ⇒ computation))
+  (⊢ (e- current-vals current-frames) ⇒ computation))
 
 (define-typed-syntax (! e es ...) ≫
   ------------------------
@@ -285,31 +309,70 @@
   (⊢ e ≫ e- ⇐ computation)
   ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
   ----------------------------------------
-  (⊢ (cond- [(pair?- current-stack)
-             (let- ([x- (car- current-stack)])
-               (with-stack (cdr- current-stack) ex-))]
+  (⊢ (cond- [(pair?- current-vals)
+             (let- ([x- (car- current-vals)])
+               (with-vals (cdr- current-vals) ex-))]
             [else e-])
      ⇒ computation))
 
+;; #:bind — the open segment is empty AND there is no delimiter: we are
+;; returning to a bind.
 (define-typed-syntax (copat-bind [(#:bind) e] [() eelse]) ≫
   (⊢ e ≫ e- ⇐ computation)
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------------
-  (⊢ (cond- [(null?- current-stack) e-]
-            [else                   eelse-])
+  (⊢ (cond- [(and- (null?- current-vals) (null?- current-frames)) e-]
+            [else eelse-])
      ⇒ computation))
 
-(define-typed-syntax (copat-method [((~literal %) (v x:id)) ex] [() eelse]) ≫
-  (⊢ v ≫ v- ⇐ value)
-  ((x ≫ x- : value) ⊢ ex ≫ ex- ⇐ computation)
+;; A delimiter is on top: the open segment is empty and there is a frame.
+;; Bind d to the delimiter (a ctype); its segment becomes the open one.
+(define-typed-syntax (copat-delim [((~literal %) d:id) ed] [() eelse]) ≫
+  ((d ≫ d- : value) ⊢ ed ≫ ed- ⇐ computation)
   (⊢ eelse ≫ eelse- ⇐ computation)
   ----------------------------------
-  (⊢ (cond- [(matches-method? current-stack v-)
-             (let- ([x- (unsafe-struct-ref current-stack 1)])
-               (with-stack (unsafe-struct-ref current-stack 2) ex-))]
+  (⊢ (cond- [(and- (null?- current-vals) (pair?- current-frames))
+             (let- ([d- (frame-name (car- current-frames))])
+               (with-stack (frame-vals (car- current-frames)) (cdr- current-frames) ed-))]
             [else eelse-])
-     ⇒ computation)
-  )
+     ⇒ computation))
+
+;; A SPECIFIC delimiter is on top. On mismatch the stack is untouched.
+(define-typed-syntax (copat-method [((~literal %) (v)) ex] [() eelse]) ≫
+  (⊢ v ≫ v- ⇐ value)
+  (⊢ ex ≫ ex- ⇐ computation)
+  (⊢ eelse ≫ eelse- ⇐ computation)
+  ----------------------------------
+  (⊢ (cond- [(and- (null?- current-vals)
+                   (pair?- current-frames)
+                   (eq?- (frame-name (car- current-frames)) v-))
+             (with-stack (frame-vals (car- current-frames)) (cdr- current-frames) ex-)]
+            [else eelse-])
+     ⇒ computation))
+
+;; A SPECIFIC delimiter is on top, checked WITHOUT popping it: the stack
+;; is unchanged in both arms. Used by (upto xs (% m)), which leaves the
+;; delimiter in place for the remainder.
+(define-typed-syntax (copat-at-method [((~literal %) (v)) ex] [() eelse]) ≫
+  (⊢ v ≫ v- ⇐ value)
+  (⊢ ex ≫ ex- ⇐ computation)
+  (⊢ eelse ≫ eelse- ⇐ computation)
+  ----------------------------------
+  (⊢ (cond- [(and- (null?- current-vals)
+                   (pair?- current-frames)
+                   (eq?- (frame-name (car- current-frames)) v-))
+             ex-]
+            [else eelse-])
+     ⇒ computation))
+
+;; Bind the whole open segment to xs and continue with an empty one.
+;; Total; O(1).
+(define-typed-syntax (copat-rest [(xs:id) e]) ≫
+  ((xs ≫ xs- : value) ⊢ e ≫ e- ⇐ computation)
+  ----------------------------------
+  (⊢ (let- ([xs- current-vals])
+       (with-vals '() e-))
+     ⇒ computation))
 
 (define-typed-syntax (pat-tag v [((~literal @) (vt x:id)) ex] [_ eelse]) ≫
   (⊢ v ≫ v- ⇐ value)
@@ -361,14 +424,31 @@
   (⊢ e1 ≫ e1- ⇐ computation)
   (⊢ e2 ≫ e2- ⇐ value)
   ----------------
-  (⊢ (with-stack (cons- e2- current-stack) e1-)
+  (⊢ (with-vals (cons- e2- current-vals) e1-)
      ⇒ computation))
 
+;; Push a LIST of values onto the open segment (source order). O(1) when
+;; the segment is empty — the common case for `apply` and for restoring
+;; a segment on backtrack.
+(define-typed-syntax (^@ e xs) ≫
+  (⊢ e ≫ e- ⇐ computation)
+  (⊢ xs ≫ xs- ⇐ value)
+  ----------------
+  (⊢ (with-vals (let- ([new xs-] [old current-vals])
+                  (if- (null?- old) new (append- new old)))
+       e-)
+     ⇒ computation))
+
+;; `% m`: close the open segment under the delimiter m and open an empty
+;; one. No arity — the delimiter's "arguments" are the segment beneath it.
 (define-typed-syntax (^% e vcty) ≫
   (⊢ e ≫ e- ⇐ computation)
   (⊢ vcty ≫ vcty- ⇐ value)
   ----------------
-  (⊢ (with-stack (invoke-method current-stack vcty-) e-)
+  (⊢ (let- ([m vcty-])
+       (unless- (ctype? m)
+                (error- "tried to apply something that wasn't a method: " m))
+       (with-stack '() (cons- (frame m current-vals) current-frames) e-))
      ⇒ computation))
 
 ;; what should be the semantics here?
@@ -432,7 +512,7 @@
 (define-typed-syntax (main e) ≫
   (⊢ e ≫ e- ⇐ computation)
   ----------------
-  (⊢ (let- ([x- (with-stack '() e-)]) (void)) ⇒ computation))
+  (⊢ (let- ([x- (with-stack '() '() e-)]) (void)) ⇒ computation))
 
 (define-typed-syntax (define! x e) ≫
   (⊢ e ≫ e- ⇐ computation)
@@ -440,7 +520,7 @@
   --------------------------------------
   (≻
    (begin-
-     (define x-tmp (with-stack '() e-))    ;; run the computation once against an empty stack
+     (define x-tmp (with-stack '() '() e-))    ;; run the computation once against an empty stack
      (define-syntax x (make-variable-like-transformer (assign-type
                                                        #'x-tmp #'value
                                                        #:wrap? #f))))))
@@ -475,7 +555,7 @@
   (check-type #f : value)
   (check-type (bind (x (ret #t)) (ret x)) : computation)
   (typecheck-fail (if #t #t #f))
-  (check-equal? ((thunk (bind (x (ret #t)) (ret x))) '()) #t)
+  (check-equal? ((thunk (bind (x (ret #t)) (ret x))) '() '()) #t)
   (check-type (! 3) : computation)
   (check-type (many-app (! 3) 4) : computation)
   (check-type (many-app (! 3) 4 5 6) : computation)

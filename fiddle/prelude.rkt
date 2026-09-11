@@ -262,18 +262,6 @@
          (! up-to-lit match-k abort-k lit (cons x seen)))]
    [() (! rev-apply abort-k seen)]))
 
-(define-rec-thunk (! up-to-method match-k abort-k method seen)
-  (copat-method
-   [(% (method xs)) ;; done, now return seen and xs to match-k
-    (do [nees <- (! reverse seen)]
-        (! match-k (~ (! apply (~ (! rev-apply abort-k seen % method)) xs)) nees xs))]
-   [()
-    (copat-arg
-     [(x) ;; more arguments, push it onto seen and continue
-      (! up-to-method match-k abort-k method (cons x seen))]
-     [() ;; something else (other method, bind) so fail
-      (! rev-apply abort-k seen)])]))
-
 ;; Multi-sigil upto: capture stack args in a single scan, stopping at
 ;; the first element in `sigils` (or at end-of-stack when `end?` is #t).
 ;; Invokes match-k with args-before-sigil and the found sigil (or the
@@ -390,46 +378,27 @@
   (define-syntax-class pat
     #:attributes (step hoist)
     ;; (rest xs) — terminal (enforced by compile-copat); never fails.
+    ;; xs := the whole open segment. O(1).
     (pattern ((~literal rest) xs:id)
       #:attr hoist '()
-      #:attr step (λ (a k f?) #`(! dot-args (~ (λ (xs) #,(k #f))))))
+      #:attr step (λ (a k f?) #`(copat-rest [(xs) #,(k #f)])))
 
-    ;; (upto xs (% m)) — grab args up to method m's frame. As in the old
-    ;; matcher the frame is re-installed so the remainder / body see it.
-    ;; The loop's abort a1 restores frame + consumed args; if the
-    ;; remainder fails it will have re-installed the frame itself, so its
-    ;; abort pops that frame and then calls a1 (no double frame).
+    ;; (upto xs (% m)) — xs := the open segment, provided the delimiter
+    ;; beneath it is m. O(1), zero-copy. The delimiter is left in place
+    ;; for the remainder / body (as the old matcher did). If the check
+    ;; fails, or the remainder fails, re-pushing xs onto the (empty)
+    ;; segment is an exact inverse.
+    ;; (upto xs (% m (p ...))) is normalized to (upto xs (% m)) (% m) p ...
+    ;; by normalize-pats below.
     (pattern ((~literal upto) xs:id ((~literal %) m:expr))
-      #:with (t a1 margs) (generate-temporaries '(meth abort margs))
+      #:with (t) (generate-temporaries '(meth))
       #:attr hoist (list (list #'t #'m))
       #:attr step
       (λ (a k f?)
-        #`(! up-to-method
-             (~ (λ (a1 xs margs)
-                  #,(with-abort f?
-                      #`(copat-method [(% (t _)) (! a1)] [() (! a1)])
-                      (λ (a2) #`(! apply (~ (^% #,(k a2) t)) margs)))))
-             #,a t '())))
-    ;; (upto xs (% m margs)) — as above but the frame is consumed and
-    ;; its arg list bound to margs.
-    (pattern ((~literal upto) xs:id ((~literal %) m:expr margs:id))
-      #:with (t a1) (generate-temporaries '(meth abort))
-      #:attr hoist (list (list #'t #'m))
-      #:attr step
-      (λ (a k f?)
-        #`(! up-to-method (~ (λ (a1 xs margs) #,(k #'a1))) #,a t '())))
-    ;; (upto xs (% m (p ...))) — frame consumed, its arg list matched
-    ;; against the list pattern. a1 already restores frame + args.
-    (pattern ((~literal upto) xs:id ((~literal %) m:expr (p ...)))
-      #:with (t a1 margs) (generate-temporaries '(meth abort margs))
-      #:with lp:vpat #'(list p ...)
-      #:attr hoist (cons (list #'t #'m) (attribute lp.hoist))
-      #:attr step
-      (λ (a k f?)
-        #`(! up-to-method
-             (~ (λ (a1 xs margs)
-                  #,((attribute lp.match) #'margs (k #'a1) #'(! a1))))
-             #,a t '())))
+        #`(copat-rest
+           [(xs) (copat-at-method
+                  [(% (t)) #,(with-abort f? #`(^@ (! #,a) xs) k)]
+                  [() (^@ (! #,a) xs)])])))
     ;; (upto xs #:sigil s lit ... [#:bind]) — single scan for any of
     ;; several literal sigils; s binds the one found (or '#:bind).
     (pattern ((~literal upto) xs:id (~datum #:sigil) s:id lit:expr ...
@@ -448,28 +417,18 @@
       (λ (a k f?)
         #`(! up-to-lit (~ (λ (a1 xs) #,(k #'a1))) #,a t '())))
 
-    ;; (% m x) — method frame on top; x binds its arg list.
-    (pattern ((~literal %) m:expr x:id)
+    ;; (% m) — the delimiter m is on top of an empty segment: pop it; its
+    ;; segment becomes the open one. The remainder's abort re-closes the
+    ;; (by then restored) segment under m — an exact inverse of the pop.
+    ;; (% m (p ...)) is normalized to (% m) p ... by normalize-pats: the
+    ;; "arguments" of m are just the values beneath its delimiter.
+    (pattern ((~literal %) m:expr)
       #:with (t) (generate-temporaries '(meth))
       #:attr hoist (list (list #'t #'m))
       #:attr step
       (λ (a k f?)
         #`(copat-method
-           [(% (t x)) #,(with-abort f? #`(! apply (~ (! #,a % t)) x) k)]
-           [() (! #,a)])))
-    ;; (% m (p ...)) — method frame on top; its arg list matched
-    ;; against the list pattern.
-    (pattern ((~literal %) m:expr (p ...))
-      #:with (t margs) (generate-temporaries '(meth margs))
-      #:with lp:vpat #'(list p ...)
-      #:attr hoist (cons (list #'t #'m) (attribute lp.hoist))
-      #:attr step
-      (λ (a k f?)
-        #`(copat-method
-           [(% (t margs))
-            #,((attribute lp.match) #'margs
-               (with-abort f? #`(! apply (~ (! #,a % t)) margs) k)
-               #`(! apply (~ (! #,a % t)) margs))]
+           [(% (t)) #,(with-abort f? #`(! #,a % t) k)]
            [() (! #,a)])))
 
     ;; bare variable — the common case; bind directly.
@@ -529,20 +488,37 @@
         #`(let (#,@(for/list ([h (in-list hs)]) #`[#,(car h) #,(cadr h)]))
             #,compiled)))
 
+  ;; Clause-level normalization, before the patterns are parsed:
+  ;;   (% m (p ...))             ≡ (% m) p ...
+  ;;   (upto xs (% m (p ...)))   ≡ (upto xs (% m)) (% m) p ...
+  ;; A delimiter carries no arguments; "its arguments" are the segment
+  ;; beneath it, matched as ordinary arg patterns (prefix semantics).
+  (define (normalize-pats ps)
+    (apply append
+           (for/list ([p (in-list ps)])
+             (syntax-parse p
+               [((~literal %) m (q ...))
+                (cons #`(% m) (syntax->list #'(q ...)))]
+               [((~literal upto) xs:id ((~literal %) m (q ...)))
+                (list* #`(upto xs (% m)) #`(% m) (syntax->list #'(q ...)))]
+               [_ (list p)]))))
+
   (define-syntax-class copat
     #:attributes (compile src)
-    (pattern (p:pat ...)
-      #:attr src (syntax->datum #'(p ...))
+    (pattern (p0 ... #:bind)
+      #:with (p:pat ...) (normalize-pats (syntax->list #'(p0 ...)))
+      #:attr src (syntax->datum #'(p0 ... #:bind))
       #:attr compile
       (λ (body abort)
         (compile-clause (attribute p.step) (attribute p.hoist)
-                        (syntax->list #'(p ...)) #f body abort)))
-    (pattern (p:pat ... #:bind)
-      #:attr src (syntax->datum #'(p ... #:bind))
+                        (syntax->list #'(p ...)) #t body abort)))
+    (pattern (p0 ...)
+      #:with (p:pat ...) (normalize-pats (syntax->list #'(p0 ...)))
+      #:attr src (syntax->datum #'(p0 ...))
       #:attr compile
       (λ (body abort)
         (compile-clause (attribute p.step) (attribute p.hoist)
-                        (syntax->list #'(p ...)) #t body abort)))))
+                        (syntax->list #'(p ...)) #f body abort)))))
 
 ;; (copat [(pat ...) body ...] ...)
 ;; Clause i's abort is a thunk of clause i+1; the last aborts to an
@@ -762,30 +738,30 @@
 (def-thunk (! list<-vector)
   (! apply/vector List))
 
-(define! chest (! new-method 'chest 1))
-(define! unit (! new-method 'unit 0))
-(define! duo (! new-method 'duo 2))
+(define! chest (! new-method 'chest))
+(define! unit (! new-method 'unit))
+(define! duo (! new-method 'duo))
 
-((copat-method [(% (unit x)) (ret x)] [() (ret 3)]) % unit)
+((copat-method [(% (unit)) (ret 3)] [() (ret 4)]) % unit)
 
-((copat [((% unit _)) (ret 3)] [() (ret 4)]) % unit)
+((copat [((% unit)) (ret 3)] [() (ret 4)]) % unit)
 (def/copat (! ununit x) [((% unit ())) (ret x)])
 
 
 ;; Nominal combinators
 
-(define! v> (! new-method 'cbv-compose 1))
-(define! v$ (! new-method 'cbv-end 0))
+(define! v> (! new-method 'cbv-compose))
+(define! v$ (! new-method 'cbv-end))
 (def-thunk (! CBV> t u)
   [x <- (! t)]
   (! u x))
 (def/copat (! CBV t)
   [((% v> (u)))(! CBV (~ (! CBV> t u)))]
-  [((% v$ _))   (! t)]
+  [((% v$))     (! t)]
   [() (! error "CBV composition: expected either another thunk or an end of args method, but got:")])
 
-(define! n> (! new-method 'cbn-compose 1))
-(define! n$ (! new-method 'cbn-end 0))
+(define! n> (! new-method 'cbn-compose))
+(define! n$ (! new-method 'cbn-end))
 (def/copat (! CBN t)
   [((% n> (u))) (! CBN (~ (! u t)))]
   [((% n$ ()))  (! t)]

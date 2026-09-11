@@ -1,8 +1,9 @@
 #lang racket/base
 
 ;; Error-path tests for copattern matching, driven from rackunit.
-;; The Fiddle side lives in an inner module; a Fiddle thunk is a 1-arg
-;; Racket procedure over the stack (a list), so we can call it directly.
+;; The Fiddle side lives in an inner module; a Fiddle thunk is a 2-arg
+;; Racket procedure over (vals frames) — the open segment and the
+;; delimiter frames — so we can call it directly with '() frames.
 
 (module m fiddle
   (require fiddle/prelude)
@@ -12,11 +13,11 @@
 
 (require 'm rackunit)
 
-(check-equal? (bad '(1)) 'one)
-(check-exn #rx"copattern-match-error" (λ () (bad '(2))))
+(check-equal? (bad '(1) '()) 'one)
+(check-exn #rx"copattern-match-error" (λ () (bad '(2) '())))
 ;; the message must mention the remaining args
-(check-exn #rx"\\(2\\)" (λ () (bad '(2))))
-(check-exn #rx"copattern-match-error" (λ () (zero-clauses '())))
+(check-exn #rx"\\(2\\)" (λ () (bad '(2) '())))
+(check-exn #rx"copattern-match-error" (λ () (zero-clauses '() '())))
 
 ;; ---------------------------------------------------------------------
 ;; Expansion-time errors. Expand a whole module in a fresh namespace so
