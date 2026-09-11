@@ -2,6 +2,8 @@
 
 (require (only-in racket/unsafe/ops unsafe-car unsafe-cdr))
 
+(require racket/performance-hint)
+(provide delimiter-error)
 (provide (struct-out foreign) (struct-out ctype) (struct-out frame) (struct-out vtype) (struct-out tagged)
          regs new-method new-tag matches-tag? Tag
          rkt->fiddle fiddle->rkt fo-rkt->fiddle fo-kw-rkt->fiddle fo-nocheck-rkt->fiddle)
@@ -89,6 +91,13 @@
 ;; wraps first-order, positional-only Racket procedures.
 ;; The manual implementation for stack length 0-3 is ugly
 ;; but is better in practice
+;; Marked for cross-module inlining: `require-fo-wrapped-provide` applies
+;; this to a primitive known at that module's compile time, so once the
+;; constructor is inlined at the definition site the compiler sees a
+;; direct call to e.g. `car` instead of a call through the variable `x`
+;; (~7% on the marble benchmark). `delimiter-error` is provided so the
+;; inlined body can refer to it.
+(begin-encourage-inline
 (define (fo-rkt->fiddle x)
   (cond
     [(procedure? x)
@@ -103,7 +112,7 @@
          [(null? (unsafe-cdr (unsafe-cdr (unsafe-cdr s))))
           (x (unsafe-car s) (unsafe-car (unsafe-cdr s)) (unsafe-car (unsafe-cdr (unsafe-cdr s))))]
          [else (apply x s)]))]
-    [else (error 'fo-rkt->fiddle-is-for-fo-funs)]))
+    [else (error 'fo-rkt->fiddle-is-for-fo-funs)])))
 
 ;; like fo-rkt->fiddle but WITHOUT the delimiter check. Used only for
 ;; `error`, which is invoked on failure paths exactly when a delimiter
